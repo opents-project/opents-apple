@@ -61,15 +61,32 @@ final class VoiceAudio: ObservableObject {
 
     func setMicrophone(_ on: Bool) async {
         guard let original = voice else { return }
+        if installedTap {
+            microphone = on
+            if !on { press(false) }
+            publishDevices()
+            return
+        }
         if on {
             let allowed = await AVCaptureDevice.requestAccess(for: .audio)
             guard voice === original else { return }
-            guard allowed else { message = "Allow microphone access in System Settings to talk."; return }
+            guard allowed else { message = String(localized: "Allow microphone access in System Settings to talk."); return }
         }
         configure(mic: on, play: output)
     }
 
-    func toggleOutput() { configure(mic: microphone, play: !output) }
+    func toggleOutput() {
+        guard let player else { configure(mic: microphone, play: true); return }
+        output.toggle()
+        player.volume = output ? 1 : 0
+        if !output { press(false) }
+        publishDevices()
+    }
+
+    private func publishDevices() {
+        voice?.setDevices(microphone: installedTap, output: player != nil,
+                          micMuted: installedTap && !microphone, outputMuted: player != nil && !output)
+    }
 
     func press(_ held: Bool) {
         talking = held && microphone && output
@@ -98,64 +115,81 @@ final class VoiceAudio: ObservableObject {
         engine = nil
         microphone = false
         output = false
-        voice?.setDevices(microphone: false, output: false)
+        publishDevices()
     }
 
     private func configure(mic: Bool, play: Bool) {
         stopEngine()
         message = nil
-        guard let voice, play || mic else { return }
-        do {
-            #if os(iOS)
-            let session = AVAudioSession.sharedInstance()
-            if mic {
-                try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
-            } else {
-                try session.setCategory(.playback)
+        guard let voice else { return }
+        if mic {
+            do {
+                try start(voice, mic: true, play: play, processing: true)
+                return
+            } catch { stopEngine() }
+            do {
+                try start(voice, mic: true, play: play, processing: false)
+                message = String(localized: "Voice processing unavailable. Using standard microphone input.")
+                return
+            } catch {
+                stopEngine()
+                message = String(localized: "Microphone unavailable: \(error.localizedDescription)")
             }
-            try session.setActive(true)
-            #endif
-            let engine = AVAudioEngine()
-            self.engine = engine
-            let player = AVAudioPlayerNode()
-            engine.attach(player)
-            if mic {
-                try engine.inputNode.setVoiceProcessingEnabled(true)
-                let inputFormat = engine.inputNode.outputFormat(forBus: 0)
-                guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
-                      let mono = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1),
-                      let converter = AVAudioConverter(from: inputFormat, to: mono) else {
-                    throw NSError(domain: "OpenTS", code: 1, userInfo: [NSLocalizedDescriptionKey: "Microphone format unavailable"])
-                }
-                engine.inputNode.installTap(onBus: 0, bufferSize: 960, format: inputFormat) { [gate] buffer, _ in
-                    gate.consume(buffer, converter: converter, voice: voice)
-                }
-                installedTap = true
-            }
-            engine.connect(player, to: engine.mainMixerNode, format: stereo)
-            try engine.start()
-            self.player = player
-            microphone = mic
-            output = play
-            if play {
-                for _ in 0..<3 { schedule(player, voice: voice) }
-                player.play()
-            }
-            voice.setDevices(microphone: mic, output: play)
-            observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self, weak engine] _ in
-                Task { @MainActor in
-                    guard let self, let engine, self.engine === engine else { return }
-                    self.configure(mic: self.microphone, play: self.output)
-                }
-            }
-        } catch {
+        }
+        do { try start(voice, mic: false, play: play, processing: false) }
+        catch {
             stopEngine()
-            message = error.localizedDescription
+            let failure = String(localized: "Playback unavailable: \(error.localizedDescription)")
+            message = [message, failure].compactMap { $0 }.joined(separator: "\n")
+        }
+    }
+
+    private func start(_ voice: Voice, mic: Bool, play: Bool, processing: Bool) throws {
+        #if os(iOS)
+        let session = AVAudioSession.sharedInstance()
+        if mic {
+            try session.setCategory(.playAndRecord, mode: processing ? .voiceChat : .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        } else {
+            try session.setCategory(.playback)
+        }
+        try session.setActive(true)
+        #endif
+        let engine = AVAudioEngine()
+        self.engine = engine
+        let player = AVAudioPlayerNode()
+        engine.attach(player)
+        if mic {
+            if processing { try engine.inputNode.setVoiceProcessingEnabled(true) }
+            let inputFormat = engine.inputNode.outputFormat(forBus: 0)
+            guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
+                  let mono = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1),
+                  let converter = AVAudioConverter(from: inputFormat, to: mono) else {
+                throw NSError(domain: "OpenTS", code: 1, userInfo: [NSLocalizedDescriptionKey: String(localized: "Microphone format unavailable")])
+            }
+            engine.inputNode.installTap(onBus: 0, bufferSize: 960, format: inputFormat) { [gate] buffer, _ in
+                gate.consume(buffer, converter: converter, voice: voice)
+            }
+            installedTap = true
+        }
+        engine.connect(player, to: engine.mainMixerNode, format: stereo)
+        try engine.start()
+        self.player = player
+        microphone = mic
+        output = play
+        player.volume = play ? 1 : 0
+        for _ in 0..<3 { schedule(player, voice: voice) }
+        player.play()
+        publishDevices()
+        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self, weak engine] _ in
+            Task { @MainActor in
+                guard let self, let engine, self.engine === engine else { return }
+                self.configure(mic: self.microphone, play: self.output)
+            }
         }
     }
 
     private func schedule(_ node: AVAudioPlayerNode, voice: Voice) {
-        guard node === player, output,
+        guard node === player,
               let buffer = AVAudioPCMBuffer(pcmFormat: stereo, frameCapacity: 960),
               let channels = buffer.floatChannelData else { return }
         let samples = voice.playbackFrame()

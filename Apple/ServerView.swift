@@ -3,9 +3,11 @@ import SwiftUI
 struct ServerView: View {
     @ObservedObject var model: ServerModel
     @State private var selection: UInt64?
+    @State private var expanded: Set<UInt64> = []
 
     @State private var lockedRoom: Room?
     @State private var password = ""
+    @State private var showingIdentity = false
 
     private func requestJoin(_ room: Room) {
         guard model.currentChannel != room.id, !model.joining else { return }
@@ -39,23 +41,40 @@ struct ServerView: View {
             .formStyle(.grouped)
         } else {
             NavigationSplitView {
-                List(selection: $selection) {
-                    OutlineGroup(model.channels, children: \.children) { channel in
-                        NavigationLink(value: channel.id) { Label(channel.room.name, systemImage: model.currentChannel == channel.id ? "person.wave.2.fill" : "bubble.left") }
+                ScrollViewReader { proxy in
+                    List(selection: $selection) {
+                        ChannelRows(nodes: model.channels, current: model.currentChannel, expanded: $expanded)
+                    }
+                    #if os(macOS)
+                    .contextMenu(forSelectionType: UInt64.self) { ids in
+                        if let id = ids.first, let room = find(id, in: model.channels) {
+                            Button("Join Channel") { requestJoin(room) }
+                                .disabled(model.currentChannel == id || model.joining)
+                        }
+                    } primaryAction: { ids in
+                        if let id = ids.first, let room = find(id, in: model.channels) { requestJoin(room) }
+                    }
+                    #endif
+                    .task(id: currentPath) {
+                        guard let path = currentPath, let id = path.last else { return }
+                        expanded.formUnion(path.dropLast())
+                        selection = id
+                        await Task.yield()
+                        guard !Task.isCancelled else { return }
+                        proxy.scrollTo(id, anchor: .center)
                     }
                 }
-                #if os(macOS)
-                .contextMenu(forSelectionType: UInt64.self) { ids in
-                    if let id = ids.first, let room = find(id, in: model.channels) {
-                        Button("Join Channel") { requestJoin(room) }
-                            .disabled(model.currentChannel == id || model.joining)
-                    }
-                } primaryAction: { ids in
-                    if let id = ids.first, let room = find(id, in: model.channels) { requestJoin(room) }
-                }
-                #endif
                 .navigationTitle(model.server)
-                .toolbar { Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right", action: model.disconnect) }
+                .toolbar {
+                    Button("My Identity", systemImage: "person.text.rectangle") { showingIdentity = true }
+                    Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right", action: model.disconnect)
+                }
+                .popover(isPresented: $showingIdentity) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("TeamSpeak Identity UID").font(.headline)
+                        Text(model.identityUID).font(.body.monospaced()).textSelection(.enabled)
+                    }.padding()
+                }
             } detail: {
                 if let selection, let room = find(selection, in: model.channels) {
                     Form {
@@ -66,7 +85,7 @@ struct ServerView: View {
                                 .disabled(model.joining)
                         }
                         LabeledContent("Audio codec", value: room.codec.replacingOccurrences(of: "Opus", with: "Opus "))
-                        LabeledContent("Channel type", value: room.kind)
+                        LabeledContent("Channel type", value: NSLocalizedString(room.kind, comment: "Channel type"))
                         if room.subscribed || !room.members.isEmpty {
                             Section("Visible members (\(room.members.count))") {
                                 ForEach(Array(room.members.enumerated()), id: \.offset) { _, name in
@@ -88,8 +107,12 @@ struct ServerView: View {
             .alert("Couldn’t Join Channel", isPresented: Binding(get: { model.joinError != nil }, set: { if !$0 { model.joinError = nil } })) {
                 Button("OK") { model.joinError = nil }
             } message: { Text(model.joinError ?? "") }
-            .onDisappear { selection = nil; lockedRoom = nil; password = "" }
+            .onDisappear { expanded = []; selection = nil; lockedRoom = nil; password = "" }
         }
+    }
+
+    private var currentPath: [UInt64]? {
+        model.currentChannel.flatMap { ChannelNode.path(to: $0, in: model.channels) }
     }
 
     private func find(_ id: UInt64, in nodes: [ChannelNode]) -> Room? {
@@ -98,5 +121,32 @@ struct ServerView: View {
             if let match = find(id, in: node.children ?? []) { return match }
         }
         return nil
+    }
+}
+
+private struct ChannelRows: View {
+    let nodes: [ChannelNode]
+    let current: UInt64?
+    @Binding var expanded: Set<UInt64>
+
+    var body: some View {
+        ForEach(nodes) { node in
+            if let children = node.children {
+                DisclosureGroup(isExpanded: Binding(get: { expanded.contains(node.id) }, set: { open in
+                    if open { expanded.insert(node.id) } else { expanded.remove(node.id) }
+                })) {
+                    ChannelRows(nodes: children, current: current, expanded: $expanded)
+                } label: { link(node) }
+                .id(node.id)
+            } else {
+                link(node).id(node.id)
+            }
+        }
+    }
+
+    private func link(_ node: ChannelNode) -> some View {
+        NavigationLink(value: node.id) {
+            Label(node.room.name, systemImage: current == node.id ? "person.wave.2.fill" : "bubble.left")
+        }
     }
 }

@@ -22,7 +22,7 @@ private struct StatusMenu: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        if model.active { Text(model.server.isEmpty ? "Connecting…" : model.server) }
+        if model.active { if model.server.isEmpty { Text("Connecting…") } else { Text(verbatim: model.server) } }
         Button(model.active ? "Show OpenTS" : "Connect…") {
             openWindow(id: "main")
             NSApp.activate(ignoringOtherApps: true)

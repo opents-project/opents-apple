@@ -5,6 +5,14 @@ struct ChannelNode: Identifiable {
     let children: [ChannelNode]?
     var id: UInt64 { room.id }
 
+    static func path(to id: UInt64, in nodes: [ChannelNode]) -> [UInt64]? {
+        for node in nodes {
+            if node.id == id { return [id] }
+            if let path = path(to: id, in: node.children ?? []) { return [node.id] + path }
+        }
+        return nil
+    }
+
     static func tree(_ rooms: [Room]) -> [ChannelNode] {
         let groups = Dictionary(grouping: rooms, by: \.parent)
         var visited = Set<UInt64>()
@@ -30,8 +38,9 @@ struct ChannelNode: Identifiable {
 
 @MainActor
 final class ServerModel: ObservableObject {
-    @Published var address = ""
-    @Published var nickname = "OpenTS"
+    @Published var address = UserDefaults.standard.string(forKey: "lastServer") ?? ""
+    @Published var nickname = UserDefaults.standard.string(forKey: "lastNickname") ?? "OpenTS"
+    @Published private(set) var identityUID = ""
     @Published private(set) var server = ""
     @Published private(set) var channels: [ChannelNode] = []
     @Published private(set) var error: String?
@@ -41,13 +50,18 @@ final class ServerModel: ObservableObject {
     @Published private(set) var joining = false
     @Published var joinError: String?
     let audio = VoiceAudio()
+    private let cues = ChannelSounds()
     private var session: Session?
     private var observer: Task<Void, Never>?
 
     func connect() {
         guard !active else { return }
         error = nil
-        let connection = Session(address: address.trimmingCharacters(in: .whitespacesAndNewlines), nickname: nickname)
+        let identity: String
+        do { identity = try IdentityStore().loadOrCreate() }
+        catch { self.error = error.localizedDescription; return }
+        let destination = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let connection = Session(address: destination, nickname: nickname, identity: identity)
         session = connection
         active = true
         observer = Task { [weak self] in
@@ -56,14 +70,23 @@ final class ServerModel: ObservableObject {
                 let update = connection.snapshot()
                 if let failure = update.error {
                     self?.disconnect()
-                    self?.error = failure
+                    self?.error = NSLocalizedString(failure, comment: "Connection error")
                     return
                 }
                 if update != previous {
                     self?.reconnecting = update.reconnecting
-                    if update.reconnecting { self?.audio.disconnect() }
+                    if update.reconnecting {
+                        if previous?.server.isEmpty == false { self?.play(.disconnected) }
+                        self?.audio.disconnect()
+                    }
                     if previous?.server.isEmpty != false && !update.server.isEmpty { self?.audio.connect(connection.audio()) }
+                    for cue in ChannelSound.changes(from: previous, to: update) { self?.play(cue) }
                     self?.currentChannel = update.currentChannel
+                    if !update.server.isEmpty && previous?.server != update.server {
+                        UserDefaults.standard.set(destination, forKey: "lastServer")
+                        UserDefaults.standard.set(self?.nickname, forKey: "lastNickname")
+                    }
+                    self?.identityUID = update.identityUid
                     self?.server = update.server
                     self?.channels = ChannelNode.tree(update.rooms)
                     previous = update
@@ -81,11 +104,16 @@ final class ServerModel: ObservableObject {
             let failure = await session.joinChannel(channel: room.id, password: password)
             guard self.session === session else { return }
             joining = false
-            joinError = failure
+            joinError = failure.map { NSLocalizedString($0, comment: "Channel error") }
         }
     }
 
+    private func play(_ cue: ChannelSound) {
+        if audio.output { cues.play(cue) }
+    }
+
     func disconnect() {
+        if !server.isEmpty { play(.disconnected) }
         audio.disconnect()
         joining = false
         joinError = nil

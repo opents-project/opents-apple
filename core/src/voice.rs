@@ -8,23 +8,37 @@ use tsproto_packets::packets::{AudioData, CodecType, InAudioBuf, OutAudio, OutPa
 
 pub const FRAME: usize = 960;
 
+#[derive(Clone, Copy, Default)]
+pub(crate) struct DeviceState {
+    pub microphone: bool,
+    pub output: bool,
+    pub mic_muted: bool,
+    pub output_muted: bool,
+}
+
+impl DeviceState {
+    pub fn can_capture(self) -> bool {
+        self.microphone && !self.mic_muted
+    }
+}
+
 #[derive(uniffi::Object)]
 pub struct Voice {
     capture: mpsc::Sender<Vec<f32>>,
-    pub(crate) enabled: watch::Sender<(bool, bool)>,
+    enabled: watch::Sender<DeviceState>,
     playback: Mutex<AudioHandler<ClientId>>,
 }
 
 pub(crate) struct AudioIo {
     pub capture: mpsc::Receiver<Vec<f32>>,
-    pub enabled: watch::Receiver<(bool, bool)>,
+    pub enabled: watch::Receiver<DeviceState>,
     pub voice: Arc<Voice>,
 }
 
 impl Voice {
     pub(crate) fn pair() -> AudioIo {
         let (capture, frames) = mpsc::channel(4);
-        let (enabled, changes) = watch::channel((false, false));
+        let (enabled, changes) = watch::channel(DeviceState::default());
         AudioIo {
             capture: frames,
             enabled: changes,
@@ -37,7 +51,8 @@ impl Voice {
     }
 
     pub(crate) fn receive(&self, packet: InAudioBuf) {
-        if !self.enabled.borrow().1 {
+        let devices = *self.enabled.borrow();
+        if !devices.output || devices.output_muted {
             return;
         }
         let from = match packet.data().data() {
@@ -54,15 +69,20 @@ impl Voice {
 
 #[uniffi::export]
 impl Voice {
-    pub fn set_devices(&self, microphone: bool, output: bool) {
-        self.enabled.send_replace((microphone, output));
-        if !output {
+    pub fn set_devices(&self, microphone: bool, output: bool, mic_muted: bool, output_muted: bool) {
+        self.enabled.send_replace(DeviceState {
+            microphone,
+            output,
+            mic_muted,
+            output_muted,
+        });
+        if !output || output_muted {
             *self.playback.lock().unwrap() = AudioHandler::new();
         }
     }
 
     pub fn submit_capture(&self, samples: Vec<f32>) {
-        if samples.len() == FRAME && self.enabled.borrow().0 {
+        if samples.len() == FRAME && self.enabled.borrow().can_capture() {
             let _ = self.capture.try_send(samples);
         }
     }
@@ -103,7 +123,7 @@ mod tests {
     fn opus_voice_round_trip_and_output_mute() {
         let io = Voice::pair();
         let encoder = encoder().unwrap();
-        io.voice.set_devices(true, true);
+        io.voice.set_devices(true, true, false, false);
         let mut power = 0.0_f64;
         let mut crossings = 0;
         let mut previous = 0.0;
@@ -138,7 +158,7 @@ mod tests {
         // The final 50 frames represent one second of decoded audio.
         assert!((425..=455).contains(&crossings), "{crossings} Hz");
         assert!((power / 48000.0).sqrt() > 0.05);
-        io.voice.set_devices(false, false);
+        io.voice.set_devices(true, true, true, true);
         assert!(io.voice.playback_frame().iter().all(|s| *s == 0.0));
     }
 }

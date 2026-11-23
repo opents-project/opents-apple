@@ -1,5 +1,13 @@
 mod voice;
 use futures::StreamExt;
+use tsclientlib::Identity;
+
+/// The returned private identity belongs only in the platform credential store.
+#[uniffi::export]
+pub fn generate_identity() -> String {
+    let id = Identity::create();
+    format!("{}V{}", id.counter(), id.key().to_ts())
+}
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
@@ -29,6 +37,8 @@ pub struct Snapshot {
     pub reconnecting: bool,
     pub rooms: Vec<Room>,
     pub current_channel: Option<u64>,
+    pub peer_ids: Vec<u16>,
+    pub identity_uid: String,
     pub error: Option<String>,
 }
 
@@ -49,7 +59,7 @@ pub struct Session {
 #[uniffi::export]
 impl Session {
     #[uniffi::constructor]
-    pub fn new(address: String, nickname: String) -> Arc<Self> {
+    pub fn new(address: String, nickname: String, identity: String) -> Arc<Self> {
         let state = Arc::new(Mutex::new(Snapshot::default()));
         let worker = state.clone();
         let io = Voice::pair();
@@ -61,7 +71,11 @@ impl Session {
                 .enable_all()
                 .build()
                 .map_err(|e| e.to_string())
-                .and_then(|rt| rt.block_on(run(address, nickname, closed, requests, io, &worker)));
+                .and_then(|rt| {
+                    rt.block_on(run(
+                        address, nickname, identity, closed, requests, io, &worker,
+                    ))
+                });
             if let Err(error) = result {
                 *worker.lock().unwrap() = Snapshot {
                     error: Some(error),
@@ -114,12 +128,17 @@ impl Session {
 async fn run(
     address: String,
     nickname: String,
+    identity: String,
     mut closed: oneshot::Receiver<()>,
     mut requests: mpsc::Receiver<JoinRequest>,
     mut io: voice::AudioIo,
     state: &Mutex<Snapshot>,
 ) -> Result<(), String> {
+    let identity = Identity::new_from_ts_str(&identity)
+        .map_err(|_| "Saved OpenTS identity is invalid".to_string())?;
+    let identity_uid = identity.key().to_pub().get_uid();
     let mut con = Connection::build(address)
+        .identity(identity)
         .name(nickname)
         .input_hardware_enabled(false)
         .output_hardware_enabled(false)
@@ -141,7 +160,7 @@ async fn run(
             _ = &mut deadline, if !ready => return Err("Server connection timed out".into()),
             frame = io.capture.recv(), if ready => {
                 if let Some(samples) = frame {
-                    if con.can_send_audio() && io.enabled.borrow().0 {
+                    if con.can_send_audio() && io.enabled.borrow().can_capture() {
                         let book = con.get_state().map_err(|e| e.to_string())?;
                         let codec = book.clients.get(&book.own_client).and_then(|c| book.channels.get(&c.channel)).map(|c| c.codec);
                         let codec = match codec {
@@ -163,10 +182,10 @@ async fn run(
                 continue;
             }
             Ok(()) = io.enabled.changed(), if ready => {
-                let (mic, out) = *io.enabled.borrow_and_update();
+                let devices = *io.enabled.borrow_and_update();
                 let cmd = con.get_state().map_err(|e| e.to_string())?.client_update()
-                    .set_input_hardware_enabled(mic).set_output_hardware_enabled(out)
-                    .set_input_muted(!mic).set_output_muted(!out);
+                    .set_input_hardware_enabled(devices.microphone).set_output_hardware_enabled(devices.output)
+                    .set_input_muted(devices.mic_muted).set_output_muted(devices.output_muted);
                 cmd.send(&mut con).map_err(|e| e.to_string())?;
                 continue;
             }
@@ -232,7 +251,7 @@ async fn run(
                 if let Some((_, reply)) = pending.take() {
                     let _ = reply.send(Some("Connection interrupted".into()));
                 }
-                io.voice.set_devices(false, false);
+                io.voice.set_devices(false, false, false, false);
                 while io.capture.try_recv().is_ok() {}
                 *state.lock().unwrap() = Snapshot {
                     reconnecting: true,
@@ -271,11 +290,23 @@ async fn run(
                 password_required: room.has_password.unwrap_or(false),
             })
             .collect();
+        let current_channel = book.clients.get(&book.own_client).map(|me| me.channel);
+        let mut peer_ids: Vec<_> = book
+            .clients
+            .values()
+            .filter(|client| {
+                client.id != book.own_client && Some(client.channel) == current_channel
+            })
+            .map(|client| client.id.0)
+            .collect();
+        peer_ids.sort_unstable();
         *state.lock().unwrap() = Snapshot {
             server: book.server.name.clone(),
+            identity_uid: identity_uid.clone(),
             reconnecting: false,
             rooms,
-            current_channel: book.clients.get(&book.own_client).map(|me| me.channel.0),
+            current_channel: current_channel.map(|channel| channel.0),
+            peer_ids,
             error: None,
         };
     }
