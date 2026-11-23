@@ -2,22 +2,37 @@ import AVFoundation
 import SwiftUI
 
 /// The input tap may run concurrently with button and device changes.
-private final class CaptureGate: @unchecked Sendable {
+final class CaptureGate: @unchecked Sendable {
     private let lock = NSLock()
     private var held = false
     private var remainder: [Float] = []
 
-    func setHeld(_ value: Bool) {
+    private var threshold: Double?
+    private var tailFrames = 0
+    private var level = -90.0
+
+    var reading: (level: Double, active: Bool) {
         lock.lock()
         defer { lock.unlock() }
-        held = value
-        if !value { remainder.removeAll(keepingCapacity: true) }
+        return (level, held || tailFrames > 0)
     }
 
-    func consume(_ input: AVAudioPCMBuffer, converter: AVAudioConverter, voice: Voice) {
+    func configure(held value: Bool, threshold newThreshold: Double?) {
         lock.lock()
         defer { lock.unlock() }
-        guard held else { return }
+        if (threshold == nil) != (newThreshold == nil) || (!value && newThreshold == nil) {
+            remainder.removeAll(keepingCapacity: true)
+            tailFrames = 0
+            level = -90
+        }
+        held = value
+        threshold = newThreshold
+    }
+
+    func consume(_ input: AVAudioPCMBuffer, converter: AVAudioConverter, send: ([Float]) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard held || threshold != nil else { return }
         let format = converter.outputFormat
         let capacity = ceil(Double(input.frameLength) * format.sampleRate / input.format.sampleRate) + 32
         guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: UInt32(capacity)) else { return }
@@ -32,7 +47,18 @@ private final class CaptureGate: @unchecked Sendable {
         guard status != .error, let samples = output.floatChannelData?[0] else { return }
         remainder.append(contentsOf: UnsafeBufferPointer(start: samples, count: Int(output.frameLength)))
         while remainder.count >= 960 {
-            voice.submitCapture(samples: Array(remainder.prefix(960)))
+            let frame = remainder.prefix(960)
+            if let threshold {
+                let power = frame.reduce(0.0) { $0 + Double($1) * Double($1) } / 960
+                level = 10 * log10(max(power, 1e-9))
+                if level >= threshold { tailFrames = 13 }
+                if tailFrames > 0 {
+                    send(Array(frame))
+                    tailFrames -= 1
+                }
+            } else {
+                send(Array(frame))
+            }
             remainder.removeFirst(960)
         }
     }
@@ -44,6 +70,11 @@ final class VoiceAudio: ObservableObject {
     @Published private(set) var output = false
     @Published private(set) var talking = false
     @Published private(set) var message: String?
+
+    @Published var voiceActivated = false { didSet { press(false) } }
+    @Published var threshold = -40.0 { didSet { press(false) } }
+    var reading: (level: Double, active: Bool) { gate.reading }
+    @Published private(set) var standardInput = false
 
     private var voice: Voice?
     private var engine: AVAudioEngine?
@@ -84,17 +115,19 @@ final class VoiceAudio: ObservableObject {
     }
 
     private func publishDevices() {
+        press(false)
         voice?.setDevices(microphone: installedTap, output: player != nil,
                           micMuted: installedTap && !microphone, outputMuted: player != nil && !output)
     }
 
     func press(_ held: Bool) {
-        talking = held && microphone && output
-        gate.setHeld(talking)
+        talking = held && microphone && output && !voiceActivated
+        gate.configure(held: talking, threshold: voiceActivated && microphone && output ? threshold : nil)
     }
 
     func disconnect() {
         stopEngine()
+        voiceActivated = false
         voice = nil
         message = nil
         #if os(iOS)
@@ -120,6 +153,7 @@ final class VoiceAudio: ObservableObject {
 
     private func configure(mic: Bool, play: Bool) {
         stopEngine()
+        standardInput = false
         message = nil
         guard let voice else { return }
         if mic {
@@ -129,6 +163,7 @@ final class VoiceAudio: ObservableObject {
             } catch { stopEngine() }
             do {
                 try start(voice, mic: true, play: play, processing: false)
+                standardInput = true
                 message = String(localized: "Voice processing unavailable. Using standard microphone input.")
                 return
             } catch {
@@ -167,7 +202,7 @@ final class VoiceAudio: ObservableObject {
                 throw NSError(domain: "OpenTS", code: 1, userInfo: [NSLocalizedDescriptionKey: String(localized: "Microphone format unavailable")])
             }
             engine.inputNode.installTap(onBus: 0, bufferSize: 960, format: inputFormat) { [gate] buffer, _ in
-                gate.consume(buffer, converter: converter, voice: voice)
+                gate.consume(buffer, converter: converter) { voice.submitCapture(samples: $0) }
             }
             installedTap = true
         }

@@ -146,7 +146,19 @@ private struct ChannelRows: View {
 
     private func link(_ node: ChannelNode) -> some View {
         NavigationLink(value: node.id) {
-            Label(node.room.name, systemImage: current == node.id ? "person.wave.2.fill" : "bubble.left")
+            HStack {
+                Label(node.room.name, systemImage: current == node.id ? "person.wave.2.fill" : "bubble.left")
+                Spacer(minLength: 4)
+                if node.room.subscribed || current == node.id {
+                    Text(node.room.members.count, format: .number)
+                        .monospacedDigit().foregroundStyle(.secondary)
+                        .accessibilityLabel(Text("Visible members (\(node.room.members.count))"))
+                } else {
+                    Text(verbatim: "—").foregroundStyle(.secondary)
+                        .accessibilityLabel("Member count unavailable")
+                        .help("Member count unavailable")
+                }
+            }
         }
     }
 }

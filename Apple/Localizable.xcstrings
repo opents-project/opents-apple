@@ -1,6 +1,23 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Activation threshold": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activation threshold"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "激活阈值"
+          }
+        }
+      }
+    },
     "Address or server nickname": {
       "extractionState": "manual",
       "localizations": {
@@ -409,6 +426,40 @@
         }
       }
     },
+    "Listening": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listening"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待语音"
+          }
+        }
+      }
+    },
+    "Member count unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Member count unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "人数未知"
+          }
+        }
+      }
+    },
     "Microphone format unavailable": {
       "extractionState": "manual",
       "localizations": {
@@ -422,6 +473,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法获取麦克风音频格式"
+          }
+        }
+      }
+    },
+    "Microphone level": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone level"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "麦克风电平"
           }
         }
       }
@@ -575,6 +643,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "声音播放不可用：%@"
+          }
+        }
+      }
+    },
+    "Push to talk": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push to talk"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按键说话"
           }
         }
       }
@@ -766,6 +851,23 @@
         }
       }
     },
+    "Transmission mode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transmission mode"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发言模式"
+          }
+        }
+      }
+    },
     "Visible members (%lld)": {
       "extractionState": "manual",
       "localizations": {
@@ -779,6 +881,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "可见成员（%lld）"
+          }
+        }
+      }
+    },
+    "Voice activation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice activation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语音激活"
           }
         }
       }
