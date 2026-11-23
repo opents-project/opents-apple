@@ -239,6 +239,23 @@
         }
       }
     },
+    "Center": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Center"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "居中"
+          }
+        }
+      }
+    },
     "Channel #%@": {
       "extractionState": "manual",
       "localizations": {
@@ -970,6 +987,23 @@
         }
       }
     },
+    "Left %lld%%": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left %lld%%"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "左 %lld%%"
+          }
+        }
+      }
+    },
     "Listening": {
       "extractionState": "manual",
       "localizations": {
@@ -1119,6 +1153,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "将输出静音"
+          }
+        }
+      }
+    },
+    "Mute locally": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mute locally"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在本机静音"
           }
         }
       }
@@ -1395,6 +1446,23 @@
         }
       }
     },
+    "Playback volume": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback volume"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放音量"
+          }
+        }
+      }
+    },
     "Push to talk": {
       "extractionState": "manual",
       "localizations": {
@@ -1497,6 +1565,23 @@
         }
       }
     },
+    "Reset playback": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset playback"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "恢复默认播放设置"
+          }
+        }
+      }
+    },
     "Retry": {
       "extractionState": "manual",
       "localizations": {
@@ -1510,6 +1595,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "重试"
+          }
+        }
+      }
+    },
+    "Right %lld%%": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Right %lld%%"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "右 %lld%%"
           }
         }
       }
@@ -1816,6 +1918,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "跳过（Skip）"
+          }
+        }
+      }
+    },
+    "Stereo balance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stereo balance"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "左右声像"
           }
         }
       }

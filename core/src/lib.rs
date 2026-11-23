@@ -21,9 +21,17 @@ use tokio::sync::{mpsc, oneshot};
 use tsclientlib::prelude::*;
 use tsclientlib::{Connection, DisconnectOptions, InMessage, StreamItem};
 use tsproto_packets::packets::{AudioData, CodecType, OutAudio};
-pub use voice::Voice;
+pub use voice::{SpeakerMix, Voice};
 
 uniffi::setup_scaffolding!();
+
+#[derive(Clone, uniffi::Record)]
+pub struct RoomMember {
+    pub client_id: u16,
+    pub database_id: u64,
+    pub name: String,
+    pub is_self: bool,
+}
 
 #[derive(Clone, uniffi::Record)]
 pub struct Room {
@@ -34,6 +42,7 @@ pub struct Room {
     pub codec: String,
     pub kind: String,
     pub members: Vec<String>,
+    pub member_details: Vec<RoomMember>,
     pub subscribed: bool,
     pub password_required: bool,
 }
@@ -345,7 +354,16 @@ async fn run(
                 subscription.send(&mut con).map_err(|e| e.to_string())?;
             }
             StreamItem::Audio(packet) => {
-                io.voice.receive(packet);
+                let from = match packet.data().data() {
+                    AudioData::S2C { from, .. } | AudioData::S2CWhisper { from, .. } => *from,
+                    _ => continue,
+                };
+                let db_id = con
+                    .get_state()
+                    .ok()
+                    .and_then(|book| book.clients.get(&tsclientlib::ClientId(from)))
+                    .map_or(0, |client| client.database_id.0);
+                io.voice.receive(packet, db_id);
                 continue;
             }
             StreamItem::MessageResult(handle, result)
@@ -416,29 +434,38 @@ async fn run(
             _ => continue,
         }
         let book = con.get_state().map_err(|e| e.to_string())?;
-        let mut members = std::collections::HashMap::<_, Vec<String>>::new();
+        let mut members = std::collections::HashMap::<_, Vec<RoomMember>>::new();
         for client in book.clients.values() {
-            members
-                .entry(client.channel)
-                .or_default()
-                .push(client.name.clone());
+            members.entry(client.channel).or_default().push(RoomMember {
+                client_id: client.id.0,
+                database_id: client.database_id.0,
+                name: client.name.clone(),
+                is_self: client.id == book.own_client,
+            });
         }
         for names in members.values_mut() {
-            names.sort();
+            names.sort_by(|a, b| a.name.cmp(&b.name).then(a.client_id.cmp(&b.client_id)));
         }
         let rooms = book
             .channels
             .values()
-            .map(|room| Room {
-                id: room.id.0,
-                parent: room.parent.0,
-                predecessor: room.order.0,
-                name: room.name.clone(),
-                codec: format!("{:?}", room.codec),
-                kind: format!("{:?}", room.channel_type),
-                members: members.remove(&room.id).unwrap_or_default(),
-                subscribed: room.subscribed,
-                password_required: room.has_password.unwrap_or(false),
+            .map(|room| {
+                let member_details = members.remove(&room.id).unwrap_or_default();
+                Room {
+                    id: room.id.0,
+                    parent: room.parent.0,
+                    predecessor: room.order.0,
+                    name: room.name.clone(),
+                    codec: format!("{:?}", room.codec),
+                    kind: format!("{:?}", room.channel_type),
+                    members: member_details
+                        .iter()
+                        .map(|member| member.name.clone())
+                        .collect(),
+                    member_details,
+                    subscribed: room.subscribed,
+                    password_required: room.has_password.unwrap_or(false),
+                }
             })
             .collect();
         let current_channel = book.clients.get(&book.own_client).map(|me| me.channel);

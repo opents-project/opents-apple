@@ -76,7 +76,7 @@ final class VoiceAudio: ObservableObject {
     var reading: (level: Double, active: Bool) { gate.reading }
     @Published private(set) var standardInput = false
 
-    private var voice: Voice?
+    @Published private(set) var voice: Voice?
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
     private var observer: NSObjectProtocol?

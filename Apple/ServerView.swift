@@ -105,9 +105,7 @@ struct ServerView: View {
                         LabeledContent("Channel type", value: NSLocalizedString(room.kind, comment: "Channel type"))
                         if room.subscribed || !room.members.isEmpty {
                             Section("Visible members (\(room.members.count))") {
-                                ForEach(Array(room.members.enumerated()), id: \.offset) { _, name in
-                                    Label(name, systemImage: "person")
-                                }
+                                MemberPlaybackList(members: room.memberDetails, audio: model.audio)
                             }
                         }
                     }.formStyle(.grouped).navigationTitle(room.name)
