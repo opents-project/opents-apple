@@ -150,9 +150,18 @@ private struct ChannelRows: View {
                 Label(node.room.name, systemImage: current == node.id ? "person.wave.2.fill" : "bubble.left")
                 Spacer(minLength: 4)
                 if node.room.subscribed || current == node.id {
-                    Text(node.room.members.count, format: .number)
-                        .monospacedDigit().foregroundStyle(.secondary)
+                    if !node.room.members.isEmpty {
+                        HStack(spacing: 3) {
+                            Image(systemName: "person.fill")
+                                .imageScale(.small)
+                                .accessibilityHidden(true)
+                            Text(node.room.members.count, format: .number)
+                                .monospacedDigit()
+                        }
+                        .foregroundStyle(.secondary)
+                        .accessibilityElement(children: .ignore)
                         .accessibilityLabel(Text("Visible members (\(node.room.members.count))"))
+                    }
                 } else {
                     Text(verbatim: "—").foregroundStyle(.secondary)
                         .accessibilityLabel("Member count unavailable")
