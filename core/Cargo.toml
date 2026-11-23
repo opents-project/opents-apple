@@ -1,0 +1,26 @@
+[package]
+name = "opents-core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[dependencies]
+futures = "0.3"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time", "net"] }
+tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib", rev = "ee3bc6f45a7137db7793ba5593a321df400d53e5", default-features = false, features = ["default-tls"] }
+uniffi = "0.32"
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[[bin]]
+name = "bindgen"
+path = "src/bin/bindgen.rs"
+required-features = ["bindgen"]
+
+[profile.dev]
+debug = 0
+incremental = false

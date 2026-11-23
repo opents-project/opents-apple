@@ -1,0 +1,5 @@
+/core/target/
+/build/
+/OpenTS.xcodeproj/
+/Apple/Generated/
+.DS_Store

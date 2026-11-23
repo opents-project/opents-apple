@@ -1,0 +1,35 @@
+name: OpenTS
+options:
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "17.0"
+settings:
+  base:
+    GENERATE_INFOPLIST_FILE: YES
+    SWIFT_VERSION: 5.0
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    OTHER_LDFLAGS: "$(inherited) -framework Security -framework SystemConfiguration -framework CoreFoundation -lc++ -lz -liconv"
+targetTemplates:
+  Client:
+    type: application
+    sources:
+      - path: Apple
+        excludes: ["Generated/*.h", "Generated/*.modulemap"]
+    dependencies:
+      - framework: build/OpenTSCore.xcframework
+        embed: false
+    settings:
+      base:
+        PRODUCT_NAME: OpenTS
+        PRODUCT_BUNDLE_IDENTIFIER: org.opents-project.opents
+targets:
+  OpenTS-macOS:
+    templates: [Client]
+    platform: macOS
+  OpenTS-iOS:
+    templates: [Client]
+    platform: iOS
+    settings:
+      base:
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
