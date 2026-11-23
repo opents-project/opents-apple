@@ -7,6 +7,10 @@ struct VoiceMenu: View {
             Text("Push to talk").tag(false)
             Text("Voice activation").tag(true)
         }
+        #if os(macOS)
+        Toggle("Global push to talk (⌥⇧Space)", isOn: $audio.globalShortcut)
+            .disabled(audio.voiceActivated)
+        #endif
         Button(audio.microphone ? "Mute Microphone" : "Enable Microphone", systemImage: audio.microphone ? "mic" : "mic.slash") {
             Task { await audio.setMicrophone(!audio.microphone) }
         }
@@ -20,6 +24,12 @@ struct VoiceControls: View {
     var body: some View {
         VStack {
             if let message = audio.message { Text(message).font(.caption).foregroundStyle(audio.standardInput ? Color.secondary : Color.red) }
+            #if os(macOS)
+            if audio.shortcutUnavailable {
+                Text("The talk shortcut is unavailable. Use Hold to Talk or free ⌥⇧Space.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            #endif
             HStack {
                 Menu("Audio", systemImage: "waveform") { VoiceMenu(audio: audio) }
                 Spacer()

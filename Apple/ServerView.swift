@@ -36,6 +36,8 @@ struct ServerView: View {
                         .disabled([model.address, model.nickname].contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
                         .keyboardShortcut(.defaultAction)
                 }
+                BookmarkSection(address: $model.address, nickname: $model.nickname)
+                    .disabled(model.active)
                 if let error = model.error { Text(error).foregroundStyle(.red) }
             }
             .formStyle(.grouped)

@@ -71,7 +71,7 @@ final class VoiceAudio: ObservableObject {
     @Published private(set) var talking = false
     @Published private(set) var message: String?
 
-    @Published var voiceActivated = false { didSet { press(false) } }
+    @Published var voiceActivated = false { didSet { resetTalkControls() } }
     @Published var threshold = -40.0 { didSet { press(false) } }
     var reading: (level: Double, active: Bool) { gate.reading }
     @Published private(set) var standardInput = false
@@ -115,13 +115,49 @@ final class VoiceAudio: ObservableObject {
     }
 
     private func publishDevices() {
-        press(false)
+        resetTalkControls()
         voice?.setDevices(microphone: installedTap, output: player != nil,
                           micMuted: installedTap && !microphone, outputMuted: player != nil && !output)
     }
 
+    private var buttonHeld = false
+    private var shortcutHeld = false
+
+    #if os(macOS)
+    @Published var globalShortcut = UserDefaults.standard.bool(forKey: "globalTalkShortcut") {
+        didSet {
+            UserDefaults.standard.set(globalShortcut, forKey: "globalTalkShortcut")
+            resetTalkControls()
+        }
+    }
+    @Published private(set) var shortcutUnavailable = false
+    private lazy var hotKey = TalkHotKey { [weak self] held in
+        self?.shortcutHeld = held
+        self?.updateTransmission()
+    }
+    #endif
+
+    private func resetTalkControls() {
+        buttonHeld = false
+        shortcutHeld = false
+        #if os(macOS)
+        if globalShortcut && microphone && output && !voiceActivated {
+            shortcutUnavailable = !hotKey.start()
+        } else {
+            hotKey.stop()
+            shortcutUnavailable = false
+        }
+        #endif
+        updateTransmission()
+    }
+
     func press(_ held: Bool) {
-        talking = held && microphone && output && !voiceActivated
+        buttonHeld = held
+        updateTransmission()
+    }
+
+    private func updateTransmission() {
+        talking = (buttonHeld || shortcutHeld) && microphone && output && !voiceActivated
         gate.configure(held: talking, threshold: voiceActivated && microphone && output ? threshold : nil)
     }
 

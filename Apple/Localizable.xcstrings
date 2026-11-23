@@ -18,6 +18,23 @@
         }
       }
     },
+    "Add Bookmark": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Bookmark"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加书签"
+          }
+        }
+      }
+    },
     "Address or server nickname": {
       "extractionState": "manual",
       "localizations": {
@@ -82,6 +99,74 @@
           "stringUnit": {
             "state": "translated",
             "value": "音频编码"
+          }
+        }
+      }
+    },
+    "Bookmark": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bookmark"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "书签"
+          }
+        }
+      }
+    },
+    "Bookmark name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bookmark name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "书签名称"
+          }
+        }
+      }
+    },
+    "Bookmark options": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bookmark options"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "书签选项"
+          }
+        }
+      }
+    },
+    "Bookmarks": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bookmarks"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "书签"
           }
         }
       }
@@ -324,6 +409,23 @@
         }
       }
     },
+    "Delete Bookmark": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Bookmark"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除书签"
+          }
+        }
+      }
+    },
     "Disconnect": {
       "extractionState": "manual",
       "localizations": {
@@ -337,6 +439,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "断开连接"
+          }
+        }
+      }
+    },
+    "Edit Bookmark": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Bookmark"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑书签"
           }
         }
       }
@@ -371,6 +490,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "启用声音输出"
+          }
+        }
+      }
+    },
+    "Global push to talk (⌥⇧Space)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Global push to talk (⌥⇧Space)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全局按键说话（⌥⇧空格）"
           }
         }
       }
@@ -698,6 +834,23 @@
         }
       }
     },
+    "Save": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        }
+      }
+    },
     "Saved OpenTS identity is invalid": {
       "extractionState": "manual",
       "localizations": {
@@ -847,6 +1000,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "服务器拒绝了频道切换请求：%@（错误码：%@）。"
+          }
+        }
+      }
+    },
+    "The talk shortcut is unavailable. Use Hold to Talk or free ⌥⇧Space.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The talk shortcut is unavailable. Use Hold to Talk or free ⌥⇧Space."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全局快捷键不可用。可使用窗口内的「按住说话」，或释放 ⌥⇧空格。"
           }
         }
       }
