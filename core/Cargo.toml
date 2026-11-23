@@ -10,7 +10,9 @@ crate-type = ["lib", "staticlib", "cdylib"]
 [dependencies]
 futures = "0.3"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time", "net"] }
-tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib", rev = "ee3bc6f45a7137db7793ba5593a321df400d53e5", default-features = false, features = ["default-tls"] }
+tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib", rev = "ee3bc6f45a7137db7793ba5593a321df400d53e5", default-features = false, features = ["default-tls", "audio"] }
+audiopus = "0.3.0-rc.0"
+tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib", rev = "ee3bc6f45a7137db7793ba5593a321df400d53e5" }
 uniffi = "0.32"
 
 [features]

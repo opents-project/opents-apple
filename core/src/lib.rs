@@ -1,9 +1,12 @@
+mod voice;
 use futures::StreamExt;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tsclientlib::prelude::*;
 use tsclientlib::{Connection, DisconnectOptions, InMessage, StreamItem};
+use tsproto_packets::packets::{AudioData, CodecType, OutAudio};
+pub use voice::Voice;
 
 uniffi::setup_scaffolding!();
 
@@ -23,6 +26,7 @@ pub struct Room {
 #[derive(Clone, Default, uniffi::Record)]
 pub struct Snapshot {
     pub server: String,
+    pub reconnecting: bool,
     pub rooms: Vec<Room>,
     pub current_channel: Option<u64>,
     pub error: Option<String>,
@@ -37,6 +41,7 @@ struct JoinRequest {
 #[derive(uniffi::Object)]
 pub struct Session {
     state: Arc<Mutex<Snapshot>>,
+    voice: Arc<Voice>,
     joins: mpsc::Sender<JoinRequest>,
     stop: Mutex<Option<oneshot::Sender<()>>>,
 }
@@ -47,6 +52,8 @@ impl Session {
     pub fn new(address: String, nickname: String) -> Arc<Self> {
         let state = Arc::new(Mutex::new(Snapshot::default()));
         let worker = state.clone();
+        let io = Voice::pair();
+        let voice = io.voice.clone();
         let (joins, requests) = mpsc::channel(1);
         let (stop, closed) = oneshot::channel();
         std::thread::spawn(move || {
@@ -54,7 +61,7 @@ impl Session {
                 .enable_all()
                 .build()
                 .map_err(|e| e.to_string())
-                .and_then(|rt| rt.block_on(run(address, nickname, closed, requests, &worker)));
+                .and_then(|rt| rt.block_on(run(address, nickname, closed, requests, io, &worker)));
             if let Err(error) = result {
                 *worker.lock().unwrap() = Snapshot {
                     error: Some(error),
@@ -64,9 +71,14 @@ impl Session {
         });
         Arc::new(Self {
             state,
+            voice,
             joins,
             stop: Mutex::new(Some(stop)),
         })
+    }
+
+    pub fn audio(&self) -> Arc<Voice> {
+        self.voice.clone()
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -104,6 +116,7 @@ async fn run(
     nickname: String,
     mut closed: oneshot::Receiver<()>,
     mut requests: mpsc::Receiver<JoinRequest>,
+    mut io: voice::AudioIo,
     state: &Mutex<Snapshot>,
 ) -> Result<(), String> {
     let mut con = Connection::build(address)
@@ -114,6 +127,10 @@ async fn run(
         .map_err(|e| e.to_string())?;
     let deadline = tokio::time::sleep(Duration::from_secs(35));
     tokio::pin!(deadline);
+    let encoder = voice::encoder()?;
+    let mut last_codec = None;
+    let end_talk = tokio::time::sleep(Duration::ZERO);
+    tokio::pin!(end_talk);
     let mut ready = false;
     let mut pending = None;
     let join_deadline = tokio::time::sleep(Duration::ZERO);
@@ -122,6 +139,37 @@ async fn run(
         let event = tokio::select! {
             _ = &mut closed => break,
             _ = &mut deadline, if !ready => return Err("Server connection timed out".into()),
+            frame = io.capture.recv(), if ready => {
+                if let Some(samples) = frame {
+                    if con.can_send_audio() && io.enabled.borrow().0 {
+                        let book = con.get_state().map_err(|e| e.to_string())?;
+                        let codec = book.clients.get(&book.own_client).and_then(|c| book.channels.get(&c.channel)).map(|c| c.codec);
+                        let codec = match codec {
+                            Some(tsclientlib::Codec::OpusVoice) => CodecType::OpusVoice,
+                            Some(tsclientlib::Codec::OpusMusic) => CodecType::OpusMusic,
+                            _ => continue,
+                        };
+                        con.send_audio(voice::encode(&encoder, &samples, codec)?).map_err(|e| e.to_string())?;
+                        last_codec = Some(codec);
+                        end_talk.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(65));
+                    }
+                }
+                continue;
+            }
+            _ = &mut end_talk, if last_codec.is_some() => {
+                if let Some(codec) = last_codec.take() {
+                    con.send_audio(OutAudio::new(&AudioData::C2S { id: 0, codec, data: &[] })).map_err(|e| e.to_string())?;
+                }
+                continue;
+            }
+            Ok(()) = io.enabled.changed(), if ready => {
+                let (mic, out) = *io.enabled.borrow_and_update();
+                let cmd = con.get_state().map_err(|e| e.to_string())?.client_update()
+                    .set_input_hardware_enabled(mic).set_output_hardware_enabled(out)
+                    .set_input_muted(!mic).set_output_muted(!out);
+                cmd.send(&mut con).map_err(|e| e.to_string())?;
+                continue;
+            }
             _ = &mut join_deadline, if pending.is_some() => {
                 if let Some((_, reply)) = pending.take() {
                     let reply: oneshot::Sender<Option<String>> = reply;
@@ -160,6 +208,10 @@ async fn run(
                     .set_subscribed(true);
                 subscription.send(&mut con).map_err(|e| e.to_string())?;
             }
+            StreamItem::Audio(packet) => {
+                io.voice.receive(packet);
+                continue;
+            }
             StreamItem::MessageResult(handle, result)
                 if pending
                     .as_ref()
@@ -174,7 +226,23 @@ async fn run(
                 }
             }
             StreamItem::BookEvents(_) if ready => (),
-            StreamItem::DisconnectedTemporarily(_) => return Err("Connection interrupted".into()),
+            StreamItem::DisconnectedTemporarily(_) => {
+                ready = false;
+                last_codec = None;
+                if let Some((_, reply)) = pending.take() {
+                    let _ = reply.send(Some("Connection interrupted".into()));
+                }
+                io.voice.set_devices(false, false);
+                while io.capture.try_recv().is_ok() {}
+                *state.lock().unwrap() = Snapshot {
+                    reconnecting: true,
+                    ..Default::default()
+                };
+                deadline
+                    .as_mut()
+                    .reset(tokio::time::Instant::now() + Duration::from_secs(35));
+                continue;
+            }
             _ => continue,
         }
         let book = con.get_state().map_err(|e| e.to_string())?;
@@ -205,6 +273,7 @@ async fn run(
             .collect();
         *state.lock().unwrap() = Snapshot {
             server: book.server.name.clone(),
+            reconnecting: false,
             rooms,
             current_channel: book.clients.get(&book.own_client).map(|me| me.channel.0),
             error: None,

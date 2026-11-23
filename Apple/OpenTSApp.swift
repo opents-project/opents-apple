@@ -30,8 +30,7 @@ private struct StatusMenu: View {
         Button(model.active && model.server.isEmpty ? "Cancel Connection" : "Disconnect", action: model.disconnect)
             .disabled(!model.active)
         Divider()
-        Button("Mute Microphone", systemImage: "mic.slash") {}.disabled(true)
-        Button("Mute Output", systemImage: "speaker.slash") {}.disabled(true)
+        VoiceMenu(audio: model.audio).disabled(model.server.isEmpty)
         Divider()
         Button("Quit OpenTS") { model.disconnect(); NSApp.terminate(nil) }
     }

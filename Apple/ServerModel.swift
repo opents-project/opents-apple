@@ -36,9 +36,11 @@ final class ServerModel: ObservableObject {
     @Published private(set) var channels: [ChannelNode] = []
     @Published private(set) var error: String?
     @Published private(set) var active = false
+    @Published private(set) var reconnecting = false
     @Published private(set) var currentChannel: UInt64?
     @Published private(set) var joining = false
     @Published var joinError: String?
+    let audio = VoiceAudio()
     private var session: Session?
     private var observer: Task<Void, Never>?
 
@@ -58,6 +60,9 @@ final class ServerModel: ObservableObject {
                     return
                 }
                 if update != previous {
+                    self?.reconnecting = update.reconnecting
+                    if update.reconnecting { self?.audio.disconnect() }
+                    if previous?.server.isEmpty != false && !update.server.isEmpty { self?.audio.connect(connection.audio()) }
                     self?.currentChannel = update.currentChannel
                     self?.server = update.server
                     self?.channels = ChannelNode.tree(update.rooms)
@@ -81,6 +86,7 @@ final class ServerModel: ObservableObject {
     }
 
     func disconnect() {
+        audio.disconnect()
         joining = false
         joinError = nil
         currentChannel = nil
@@ -89,6 +95,7 @@ final class ServerModel: ObservableObject {
         session?.disconnect()
         session = nil
         active = false
+        reconnecting = false
         server = ""
         channels = []
     }

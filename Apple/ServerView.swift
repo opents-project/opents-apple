@@ -27,7 +27,7 @@ struct ServerView: View {
                 }
                 .disabled(model.active)
                 if model.active {
-                    ProgressView("Connecting…")
+                    ProgressView(model.reconnecting ? "Reconnecting…" : "Connecting…")
                     Button("Cancel", action: model.disconnect)
                 } else {
                     Button("Connect", action: model.connect)
@@ -79,6 +79,7 @@ struct ServerView: View {
                     ContentUnavailableView("Select a channel", systemImage: "bubble.left.and.bubble.right")
                 }
             }
+            .safeAreaInset(edge: .bottom) { VoiceControls(audio: model.audio) }
             .alert("Channel Password", isPresented: Binding(get: { lockedRoom != nil }, set: { if !$0 { lockedRoom = nil } }), presenting: lockedRoom) { room in
                 SecureField("Password", text: $password)
                 Button("Join") { model.join(room, password: password); password = "" }

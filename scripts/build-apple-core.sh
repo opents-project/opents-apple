@@ -7,6 +7,7 @@ gen="$root/Apple/Generated"
 mkdir -p "$out" "$gen" "$out/headers"
 cd core
 export PATH="$(dirname "$(rustup which --toolchain stable rustc)"):$PATH"
+export LIBOPUS_NO_PKG=1 LIBOPUS_STATIC=1 CMAKE_POLICY_VERSION_MINIMUM=3.5
 export MACOSX_DEPLOYMENT_TARGET=14.0 IPHONEOS_DEPLOYMENT_TARGET=17.0
 rustup run stable cargo build --locked --features bindgen --bin bindgen
 rustup run stable cargo build --locked --lib
