@@ -222,6 +222,23 @@
         }
       }
     },
+    "Cancelled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelled"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已取消"
+          }
+        }
+      }
+    },
     "Channel #%@": {
       "extractionState": "manual",
       "localizations": {
@@ -426,6 +443,23 @@
         }
       }
     },
+    "Completed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成"
+          }
+        }
+      }
+    },
     "Connect": {
       "extractionState": "manual",
       "localizations": {
@@ -541,6 +575,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法读取数据：%@"
+          }
+        }
+      }
+    },
+    "Could not read folder.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read folder."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取目录。"
           }
         }
       }
@@ -745,6 +796,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "有效值：%@"
+          }
+        }
+      }
+    },
+    "Empty folder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empty folder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空目录"
           }
         }
       }
@@ -1157,6 +1225,23 @@
         }
       }
     },
+    "Offline files": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline files"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离线文件预览"
+          }
+        }
+      }
+    },
     "Offline permission preview": {
       "extractionState": "manual",
       "localizations": {
@@ -1204,6 +1289,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法读取或保存 OpenTS 身份（钥匙串）：%@"
+          }
+        }
+      }
+    },
+    "Parent folder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parent folder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上一级目录"
           }
         }
       }
@@ -1340,6 +1442,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "读取失败"
+          }
+        }
+      }
+    },
+    "Reconnect": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新连接"
           }
         }
       }
@@ -1616,6 +1735,74 @@
         }
       }
     },
+    "Simulate download": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simulate download"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模拟下载"
+          }
+        }
+      }
+    },
+    "Simulate failure": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simulate failure"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模拟失败"
+          }
+        }
+      }
+    },
+    "Simulate upload": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simulate upload"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模拟上传"
+          }
+        }
+      }
+    },
+    "Simulated transfers": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simulated transfers"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模拟传输"
+          }
+        }
+      }
+    },
     "Skip": {
       "extractionState": "manual",
       "localizations": {
@@ -1748,6 +1935,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "全局快捷键不可用。可使用窗口内的「按住说话」，或释放 ⌥⇧空格。"
+          }
+        }
+      }
+    },
+    "Transfer failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transfer failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "传输失败"
           }
         }
       }

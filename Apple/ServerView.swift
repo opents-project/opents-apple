@@ -8,6 +8,7 @@ struct ServerView: View {
     @State private var lockedRoom: Room?
     @State private var password = ""
     #if DEBUG
+    @State private var showingFilesPreview = false
     @State private var showingLogPreview = false
     @State private var showingPermissionPreview = false
     #endif
@@ -44,6 +45,8 @@ struct ServerView: View {
                 BookmarkSection(address: $model.address, nickname: $model.nickname)
                     .disabled(model.active)
                 #if DEBUG
+                Button("Offline files") { showingFilesPreview = true }
+                    .sheet(isPresented: $showingFilesPreview) { OfflineFilesView() }
                 Button("Offline server log") { showingLogPreview = true }
                     .sheet(isPresented: $showingLogPreview) { OfflineServerLogView() }
                 Button("Offline permission preview") { showingPermissionPreview = true }
