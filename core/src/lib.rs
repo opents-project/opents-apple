@@ -35,6 +35,7 @@ pub struct Room {
 pub struct Snapshot {
     pub server: String,
     pub reconnecting: bool,
+    pub audio_generation: u64,
     pub rooms: Vec<Room>,
     pub current_channel: Option<u64>,
     pub peer_ids: Vec<u16>,
@@ -66,7 +67,7 @@ struct JoinRequest {
 #[derive(uniffi::Object)]
 pub struct Session {
     state: Arc<Mutex<Snapshot>>,
-    voice: Arc<Voice>,
+    voice: Arc<Mutex<Arc<Voice>>>,
     joins: mpsc::Sender<JoinRequest>,
     stop: Mutex<Option<oneshot::Sender<()>>>,
 }
@@ -78,7 +79,8 @@ impl Session {
         let state = Arc::new(Mutex::new(Snapshot::default()));
         let worker = state.clone();
         let io = Voice::pair();
-        let voice = io.voice.clone();
+        let voice = Arc::new(Mutex::new(io.voice.clone()));
+        let current_voice = voice.clone();
         let (joins, requests) = mpsc::channel(1);
         let (stop, closed) = oneshot::channel();
         std::thread::spawn(move || {
@@ -88,7 +90,14 @@ impl Session {
                 .map_err(|e| e.to_string())
                 .and_then(|rt| {
                     rt.block_on(run(
-                        address, nickname, identity, closed, requests, io, &worker,
+                        address,
+                        nickname,
+                        identity,
+                        closed,
+                        requests,
+                        io,
+                        &current_voice,
+                        &worker,
                     ))
                 });
             if let Err(error) = result {
@@ -107,7 +116,7 @@ impl Session {
     }
 
     pub fn audio(&self) -> Arc<Voice> {
-        self.voice.clone()
+        self.voice.lock().unwrap().clone()
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -140,6 +149,20 @@ impl Session {
     }
 }
 
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(35);
+
+async fn stop_or_timeout(
+    closed: &mut oneshot::Receiver<()>,
+    deadline: std::pin::Pin<&mut tokio::time::Sleep>,
+    ready: bool,
+) -> Result<(), String> {
+    tokio::select! {
+        biased;
+        _ = closed => Ok(()),
+        _ = deadline, if !ready => Err("Server connection timed out".into()),
+    }
+}
+
 async fn run(
     address: String,
     nickname: String,
@@ -147,6 +170,7 @@ async fn run(
     mut closed: oneshot::Receiver<()>,
     mut requests: mpsc::Receiver<JoinRequest>,
     mut io: voice::AudioIo,
+    current_voice: &Mutex<Arc<Voice>>,
     state: &Mutex<Snapshot>,
 ) -> Result<(), String> {
     let identity = Identity::new_from_ts_str(&identity)
@@ -159,20 +183,20 @@ async fn run(
         .output_hardware_enabled(false)
         .connect()
         .map_err(|e| e.to_string())?;
-    let deadline = tokio::time::sleep(Duration::from_secs(35));
+    let deadline = tokio::time::sleep(CONNECTION_TIMEOUT);
     tokio::pin!(deadline);
     let encoder = voice::encoder()?;
     let mut last_codec = None;
     let end_talk = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(end_talk);
     let mut ready = false;
+    let mut audio_generation = 0;
     let mut pending = None;
     let join_deadline = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(join_deadline);
     loop {
         let event = tokio::select! {
-            _ = &mut closed => break,
-            _ = &mut deadline, if !ready => return Err("Server connection timed out".into()),
+            stop = stop_or_timeout(&mut closed, deadline.as_mut(), ready) => { stop?; break; },
             frame = io.capture.recv(), if ready => {
                 if let Some(samples) = frame {
                     if con.can_send_audio() && io.enabled.borrow().can_capture() {
@@ -268,20 +292,23 @@ async fn run(
             }
             StreamItem::BookEvents(_) if ready => (),
             StreamItem::DisconnectedTemporarily(_) => {
+                if ready {
+                    deadline
+                        .as_mut()
+                        .reset(tokio::time::Instant::now() + CONNECTION_TIMEOUT);
+                }
                 ready = false;
                 last_codec = None;
                 if let Some((_, reply)) = pending.take() {
                     let _ = reply.send(Some("Connection interrupted".into()));
                 }
-                io.voice.set_devices(false, false, false, false);
-                while io.capture.try_recv().is_ok() {}
+                io = replace_audio(&io, current_voice);
+                audio_generation += 1;
                 *state.lock().unwrap() = Snapshot {
                     reconnecting: true,
+                    audio_generation,
                     ..Default::default()
                 };
-                deadline
-                    .as_mut()
-                    .reset(tokio::time::Instant::now() + Duration::from_secs(35));
                 continue;
             }
             _ => continue,
@@ -326,6 +353,7 @@ async fn run(
             server: book.server.name.clone(),
             identity_uid: identity_uid.clone(),
             reconnecting: false,
+            audio_generation,
             rooms,
             current_channel: current_channel.map(|channel| channel.0),
             peer_ids,
@@ -341,4 +369,62 @@ async fn run(
         .await;
     }
     Ok(())
+}
+
+fn replace_audio(previous: &voice::AudioIo, current: &Mutex<Arc<Voice>>) -> voice::AudioIo {
+    previous.voice.set_devices(false, false, false, false);
+    let next = Voice::pair();
+    *current.lock().unwrap() = next.voice.clone();
+    next
+}
+
+#[cfg(test)]
+mod reconnect_tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn recovery_expires_but_manual_disconnect_stops_immediately() {
+        let (cancel, mut closed) = oneshot::channel();
+        let deadline = tokio::time::sleep(CONNECTION_TIMEOUT);
+        tokio::pin!(deadline);
+        tokio::time::advance(CONNECTION_TIMEOUT - Duration::from_secs(1)).await;
+        assert!(futures::poll!(Box::pin(stop_or_timeout(
+            &mut closed,
+            deadline.as_mut(),
+            false
+        )))
+        .is_pending());
+        tokio::time::advance(Duration::from_secs(1)).await;
+        assert!(stop_or_timeout(&mut closed, deadline.as_mut(), false)
+            .await
+            .is_err());
+        assert!(futures::poll!(Box::pin(stop_or_timeout(
+            &mut closed,
+            deadline.as_mut(),
+            true
+        )))
+        .is_pending());
+        cancel.send(()).unwrap();
+        assert!(stop_or_timeout(&mut closed, deadline.as_mut(), false)
+            .await
+            .is_ok());
+    }
+
+    #[test]
+    fn old_microphone_cannot_send_on_reconnected_session() {
+        let mut io = Voice::pair();
+        let old = io.voice.clone();
+        let current = Mutex::new(old.clone());
+        old.set_devices(true, true, false, false);
+        old.submit_capture(vec![0.25; voice::FRAME]);
+        io = replace_audio(&io, &current);
+        old.set_devices(true, true, false, false);
+        old.submit_capture(vec![0.5; voice::FRAME]);
+        let new = current.lock().unwrap().clone();
+        new.submit_capture(vec![0.75; voice::FRAME]);
+        assert!(io.capture.try_recv().is_err());
+        new.set_devices(true, true, false, false);
+        new.submit_capture(vec![1.0; voice::FRAME]);
+        assert_eq!(io.capture.try_recv().unwrap(), vec![1.0; voice::FRAME]);
+    }
 }

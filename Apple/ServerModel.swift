@@ -79,7 +79,9 @@ final class ServerModel: ObservableObject {
                         if previous?.server.isEmpty == false { self?.play(.disconnected) }
                         self?.audio.disconnect()
                     }
-                    if previous?.server.isEmpty != false && !update.server.isEmpty { self?.audio.connect(connection.audio()) }
+                    if !update.server.isEmpty && (previous?.server.isEmpty != false || previous?.audioGeneration != update.audioGeneration) {
+                        self?.audio.connect(connection.audio())
+                    }
                     for cue in ChannelSound.changes(from: previous, to: update) { self?.play(cue) }
                     self?.currentChannel = update.currentChannel
                     if !update.server.isEmpty && previous?.server != update.server {

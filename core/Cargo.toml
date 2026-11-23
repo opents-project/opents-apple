@@ -15,6 +15,9 @@ audiopus = "0.3.0-rc.0"
 tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib", rev = "ee3bc6f45a7137db7793ba5593a321df400d53e5" }
 uniffi = "0.32"
 
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+
 [features]
 bindgen = ["uniffi/cli"]
 
