@@ -749,6 +749,23 @@
         }
       }
     },
+    "The server declined the channel change: %@ (error code: %@).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server declined the channel change: %@ (error code: %@)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器拒绝了频道切换请求：%@（错误码：%@）。"
+          }
+        }
+      }
+    },
     "Visible members (%lld)": {
       "extractionState": "manual",
       "localizations": {
@@ -779,6 +796,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "语音处理不可用，已切换到普通麦克风输入。"
+          }
+        }
+      }
+    },
+    "Your identity lacks permission to join this channel (permission ID: %@).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your identity lacks permission to join this channel (permission ID: %@)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前身份没有加入此频道的权限（权限编号：%@）。"
+          }
+        }
+      }
+    },
+    "Your identity lacks permission to join this channel.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your identity lacks permission to join this channel."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前身份没有加入此频道的权限。"
           }
         }
       }

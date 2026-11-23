@@ -104,7 +104,7 @@ final class ServerModel: ObservableObject {
             let failure = await session.joinChannel(channel: room.id, password: password)
             guard self.session === session else { return }
             joining = false
-            joinError = failure.map { NSLocalizedString($0, comment: "Channel error") }
+            joinError = failure?.userMessage
         }
     }
 
@@ -126,5 +126,21 @@ final class ServerModel: ObservableObject {
         reconnecting = false
         server = ""
         channels = []
+    }
+}
+
+extension JoinFailure {
+    var userMessage: String {
+        switch self {
+        case .permissionDenied(let permission):
+            if let permission {
+                return String(localized: "Your identity lacks permission to join this channel (permission ID: \(String(permission))).")
+            }
+            return String(localized: "Your identity lacks permission to join this channel.")
+        case .serverRejected(let code, let reason):
+            return String(localized: "The server declined the channel change: \(reason) (error code: \(String(code))).")
+        case .other(let message):
+            return NSLocalizedString(message, comment: "Channel error")
+        }
     }
 }

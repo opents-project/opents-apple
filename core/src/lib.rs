@@ -42,10 +42,25 @@ pub struct Snapshot {
     pub error: Option<String>,
 }
 
+#[derive(uniffi::Enum)]
+pub enum JoinFailure {
+    PermissionDenied { permission: Option<u32> },
+    ServerRejected { code: u32, reason: String },
+    Other { message: String },
+}
+
+impl From<&str> for JoinFailure {
+    fn from(message: &str) -> Self {
+        Self::Other {
+            message: message.into(),
+        }
+    }
+}
+
 struct JoinRequest {
     channel: u64,
     password: String,
-    reply: oneshot::Sender<Option<String>>,
+    reply: oneshot::Sender<Option<JoinFailure>>,
 }
 
 #[derive(uniffi::Object)]
@@ -99,7 +114,7 @@ impl Session {
         self.state.lock().unwrap().clone()
     }
 
-    pub async fn join_channel(&self, channel: u64, password: String) -> Option<String> {
+    pub async fn join_channel(&self, channel: u64, password: String) -> Option<JoinFailure> {
         let (reply, result) = oneshot::channel();
         if self
             .joins
@@ -191,7 +206,7 @@ async fn run(
             }
             _ = &mut join_deadline, if pending.is_some() => {
                 if let Some((_, reply)) = pending.take() {
-                    let reply: oneshot::Sender<Option<String>> = reply;
+                    let reply: oneshot::Sender<Option<JoinFailure>> = reply;
                     let _ = reply.send(Some("Channel change timed out".into()));
                 }
                 continue;
@@ -208,7 +223,7 @@ async fn run(
                         pending = Some((handle, request.reply));
                         join_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(10));
                     }
-                    Err(error) => { let _ = request.reply.send(Some(error)); }
+                    Err(error) => { let _ = request.reply.send(Some(JoinFailure::Other { message: error })); }
                 }
                 continue;
             }
@@ -237,9 +252,16 @@ async fn run(
                     .is_some_and(|(expected, _)| *expected == handle) =>
             {
                 if let Some((_, reply)) = pending.take() {
-                    let reason = result.err().map(|e| match e.missing_permission {
-                        Some(permission) => format!("{} ({permission:?})", e.error),
-                        None => e.to_string(),
+                    let reason = result.err().map(|e| match e.error {
+                        tsclientlib::TsError::PermissionsClientInsufficient => {
+                            JoinFailure::PermissionDenied {
+                                permission: e.missing_permission.map(|p| p.0),
+                            }
+                        }
+                        other => JoinFailure::ServerRejected {
+                            code: other as u32,
+                            reason: other.to_string(),
+                        },
                     });
                     let _ = reply.send(reason);
                 }
