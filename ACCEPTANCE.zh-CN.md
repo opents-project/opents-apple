@@ -23,7 +23,8 @@
 | 简体中文和英语 | 界面、菜单、应用错误、麦克风用途描述 | 通过 | 两个平台构建产物中的中英文资源逐条核对；macOS 中文界面实测 | iOS 界面待验 |
 | 频道与服务器文字聊天 | 会话内收发，按服务器或当前频道 ID 隔离，确认后显示己方消息；失败保留草稿 | 通过 | Rust 模拟消息覆盖目标范围、切换频道、回显去重和拒绝；Swift 离线状态测试覆盖范围过滤、错误显示状态和草稿保留 | 官方客户端、真实收发、窗口和手机交互待验 |
 | 群组列表与有效权限（离线预览） | 服务器组与频道组分别列出；按客户端数据库 ID、频道 ID 展示有效值和五类赋值来源 | 通过 | 同 ID 不同类群组、已知/未知有效值、负值、skip/negate、空响应、权限不足、读取失败分别验证 | 使用模拟数据；真实读取、权限解析规则及界面交互待验 |
-| 私聊、群组权限编辑和服务器管理、服务器日志、文件传输 | 见实施计划 | 待实现 | 待验 | 待验 |
+| 服务器日志（Debug 离线预览） | 模拟数据分批加载、显示空结果、拒绝和失败，可重试；切换模拟服务器或断开时清空 | 通过 | Swift 离线断言覆盖 3/3/1 分页、末页、连续点击、重复回包、重叠记录、游标停滞、同游标重试和旧连接回包 | 管理日志协议尚未接入；真实服务器、日志轮转和设备界面待验 |
+| 私聊、群组权限编辑和服务器管理、文件传输 | 见实施计划 | 待实现 | 待验 | 待验 |
 
 语音回环可在 core 目录执行 `cargo test --locked --lib`。测试把客户端语音负载装进本地模拟的服务端转发包，不读取麦克风。另行验证实际通话时，应分别记录发送端、接收端、系统、设备、频道编码，以及两个方向的结果。
 
@@ -32,3 +33,5 @@
 文字聊天离线检查：在 core 目录运行 `cargo test --locked --lib`。生成 Apple 绑定后，在仓库根目录运行 `swiftc -I build/headers -L core/target/debug -lopents_core Apple/Generated/opents_core.swift Apple/ChatState.swift tests/ChatStateCheck.swift -o /tmp/opents-chat-check && /tmp/opents-chat-check`。
 
 离线权限检查：生成 Apple 绑定后运行 `swiftc -D DEBUG -I build/headers -L core/target/debug -lopents_core Apple/Generated/opents_core.swift Apple/PermissionsState.swift tests/PermissionsStateCheck.swift -o /tmp/opents-permissions-check && /tmp/opents-permissions-check`。Debug 连接页的「离线权限预览」只展示模拟响应。
+
+日志离线检查：在仓库根目录运行 `swiftc -D DEBUG Apple/ServerLog.swift tests/ServerLogCheck.swift -o /tmp/opents-serverlog-check && /tmp/opents-serverlog-check`。该检查只使用进程内的模拟响应。

@@ -545,6 +545,23 @@
         }
       }
     },
+    "Could not read the server log.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read the server log."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取服务器日志。"
+          }
+        }
+      }
+    },
     "Couldn’t Join Channel": {
       "extractionState": "manual",
       "localizations": {
@@ -626,6 +643,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "断开连接"
+          }
+        }
+      }
+    },
+    "Disconnected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disconnected"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已断开"
           }
         }
       }
@@ -885,6 +919,23 @@
         }
       }
     },
+    "Load older entries": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load older entries"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加载更早记录"
+          }
+        }
+      }
+    },
     "Member count unavailable": {
       "extractionState": "manual",
       "localizations": {
@@ -1055,6 +1106,23 @@
         }
       }
     },
+    "No log entries.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No log entries."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有日志记录。"
+          }
+        }
+      }
+    },
     "No permissions returned.": {
       "extractionState": "manual",
       "localizations": {
@@ -1102,6 +1170,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "离线权限预览"
+          }
+        }
+      }
+    },
+    "Offline server log": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline server log"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离线服务器日志"
           }
         }
       }
@@ -1293,6 +1378,23 @@
         }
       }
     },
+    "Retry": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重试"
+          }
+        }
+      }
+    },
     "Sample response": {
       "extractionState": "manual",
       "localizations": {
@@ -1306,6 +1408,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "模拟响应"
+          }
+        }
+      }
+    },
+    "Sample server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sample server"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模拟服务器"
           }
         }
       }
@@ -1459,6 +1578,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "服务器组"
+          }
+        }
+      }
+    },
+    "Server log": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server log"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器日志"
           }
         }
       }
