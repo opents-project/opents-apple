@@ -36,6 +36,9 @@ final class ServerModel: ObservableObject {
     @Published private(set) var channels: [ChannelNode] = []
     @Published private(set) var error: String?
     @Published private(set) var active = false
+    @Published private(set) var currentChannel: UInt64?
+    @Published private(set) var joining = false
+    @Published var joinError: String?
     private var session: Session?
     private var observer: Task<Void, Never>?
 
@@ -55,6 +58,7 @@ final class ServerModel: ObservableObject {
                     return
                 }
                 if update != previous {
+                    self?.currentChannel = update.currentChannel
                     self?.server = update.server
                     self?.channels = ChannelNode.tree(update.rooms)
                     previous = update
@@ -64,7 +68,22 @@ final class ServerModel: ObservableObject {
         }
     }
 
+    func join(_ room: Room, password: String = "") {
+        guard let session, !joining, currentChannel != room.id else { return }
+        joining = true
+        joinError = nil
+        Task {
+            let failure = await session.joinChannel(channel: room.id, password: password)
+            guard self.session === session else { return }
+            joining = false
+            joinError = failure
+        }
+    }
+
     func disconnect() {
+        joining = false
+        joinError = nil
+        currentChannel = nil
         observer?.cancel()
         observer = nil
         session?.disconnect()

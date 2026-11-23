@@ -1,7 +1,7 @@
 use futures::StreamExt;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tsclientlib::prelude::*;
 use tsclientlib::{Connection, DisconnectOptions, InMessage, StreamItem};
 
@@ -17,18 +17,27 @@ pub struct Room {
     pub kind: String,
     pub members: Vec<String>,
     pub subscribed: bool,
+    pub password_required: bool,
 }
 
 #[derive(Clone, Default, uniffi::Record)]
 pub struct Snapshot {
     pub server: String,
     pub rooms: Vec<Room>,
+    pub current_channel: Option<u64>,
     pub error: Option<String>,
+}
+
+struct JoinRequest {
+    channel: u64,
+    password: String,
+    reply: oneshot::Sender<Option<String>>,
 }
 
 #[derive(uniffi::Object)]
 pub struct Session {
     state: Arc<Mutex<Snapshot>>,
+    joins: mpsc::Sender<JoinRequest>,
     stop: Mutex<Option<oneshot::Sender<()>>>,
 }
 
@@ -38,13 +47,14 @@ impl Session {
     pub fn new(address: String, nickname: String) -> Arc<Self> {
         let state = Arc::new(Mutex::new(Snapshot::default()));
         let worker = state.clone();
+        let (joins, requests) = mpsc::channel(1);
         let (stop, closed) = oneshot::channel();
         std::thread::spawn(move || {
             let result = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .map_err(|e| e.to_string())
-                .and_then(|rt| rt.block_on(run(address, nickname, closed, &worker)));
+                .and_then(|rt| rt.block_on(run(address, nickname, closed, requests, &worker)));
             if let Err(error) = result {
                 *worker.lock().unwrap() = Snapshot {
                     error: Some(error),
@@ -54,12 +64,32 @@ impl Session {
         });
         Arc::new(Self {
             state,
+            joins,
             stop: Mutex::new(Some(stop)),
         })
     }
 
     pub fn snapshot(&self) -> Snapshot {
         self.state.lock().unwrap().clone()
+    }
+
+    pub async fn join_channel(&self, channel: u64, password: String) -> Option<String> {
+        let (reply, result) = oneshot::channel();
+        if self
+            .joins
+            .send(JoinRequest {
+                channel,
+                password,
+                reply,
+            })
+            .await
+            .is_err()
+        {
+            return Some("Connection closed".into());
+        }
+        result
+            .await
+            .unwrap_or_else(|_| Some("Connection closed".into()))
     }
 
     pub fn disconnect(&self) {
@@ -73,6 +103,7 @@ async fn run(
     address: String,
     nickname: String,
     mut closed: oneshot::Receiver<()>,
+    mut requests: mpsc::Receiver<JoinRequest>,
     state: &Mutex<Snapshot>,
 ) -> Result<(), String> {
     let mut con = Connection::build(address)
@@ -84,10 +115,36 @@ async fn run(
     let deadline = tokio::time::sleep(Duration::from_secs(35));
     tokio::pin!(deadline);
     let mut ready = false;
+    let mut pending = None;
+    let join_deadline = tokio::time::sleep(Duration::ZERO);
+    tokio::pin!(join_deadline);
     loop {
         let event = tokio::select! {
             _ = &mut closed => break,
             _ = &mut deadline, if !ready => return Err("Server connection timed out".into()),
+            _ = &mut join_deadline, if pending.is_some() => {
+                if let Some((_, reply)) = pending.take() {
+                    let reply: oneshot::Sender<Option<String>> = reply;
+                    let _ = reply.send(Some("Channel change timed out".into()));
+                }
+                continue;
+            }
+            request = requests.recv(), if pending.is_none() => {
+                let Some(request) = request else { break };
+                let sent = con.get_state().map_err(|e| e.to_string()).and_then(|book| {
+                    let me = book.clients.get(&book.own_client).ok_or("Client is not ready")?;
+                    let cmd = me.client_move(tsclientlib::ChannelId(request.channel));
+                    Ok(if request.password.is_empty() { cmd } else { cmd.set_password(&request.password) })
+                }).and_then(|cmd| cmd.send_with_result(&mut con).map_err(|e| e.to_string()));
+                match sent {
+                    Ok(handle) => {
+                        pending = Some((handle, request.reply));
+                        join_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(10));
+                    }
+                    Err(error) => { let _ = request.reply.send(Some(error)); }
+                }
+                continue;
+            }
             event = async { con.events().next().await } => event,
         };
         match event
@@ -102,6 +159,19 @@ async fn run(
                     .server
                     .set_subscribed(true);
                 subscription.send(&mut con).map_err(|e| e.to_string())?;
+            }
+            StreamItem::MessageResult(handle, result)
+                if pending
+                    .as_ref()
+                    .is_some_and(|(expected, _)| *expected == handle) =>
+            {
+                if let Some((_, reply)) = pending.take() {
+                    let reason = result.err().map(|e| match e.missing_permission {
+                        Some(permission) => format!("{} ({permission:?})", e.error),
+                        None => e.to_string(),
+                    });
+                    let _ = reply.send(reason);
+                }
             }
             StreamItem::BookEvents(_) if ready => (),
             StreamItem::DisconnectedTemporarily(_) => return Err("Connection interrupted".into()),
@@ -130,11 +200,13 @@ async fn run(
                 kind: format!("{:?}", room.channel_type),
                 members: members.remove(&room.id).unwrap_or_default(),
                 subscribed: room.subscribed,
+                password_required: room.has_password.unwrap_or(false),
             })
             .collect();
         *state.lock().unwrap() = Snapshot {
             server: book.server.name.clone(),
             rooms,
+            current_channel: book.clients.get(&book.own_client).map(|me| me.channel.0),
             error: None,
         };
     }
