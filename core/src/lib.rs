@@ -1,4 +1,9 @@
 mod chat;
+mod permissions;
+pub use permissions::{
+    EffectivePermission, GroupKind, ListedGroup, PermissionAssignment, PermissionOverview,
+    PermissionSource,
+};
 mod voice;
 pub use chat::{ChatLine, ChatScope};
 use futures::StreamExt;

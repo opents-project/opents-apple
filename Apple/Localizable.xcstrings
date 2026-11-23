@@ -1,6 +1,23 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Access denied": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Access denied"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "权限不足"
+          }
+        }
+      }
+    },
     "Activation threshold": {
       "extractionState": "manual",
       "localizations": {
@@ -205,6 +222,74 @@
         }
       }
     },
+    "Channel #%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Channel #%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道 #%@"
+          }
+        }
+      }
+    },
+    "Channel #%@, client #%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Channel #%@, client #%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道 #%@，客户端 #%@"
+          }
+        }
+      }
+    },
+    "Channel #%@, group #%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Channel #%@, group #%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道 #%@，频道组 #%@"
+          }
+        }
+      }
+    },
+    "Channel ID": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Channel ID"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道 ID"
+          }
+        }
+      }
+    },
     "Channel Password": {
       "extractionState": "manual",
       "localizations": {
@@ -239,6 +324,23 @@
         }
       }
     },
+    "Channel groups": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Channel groups"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道组"
+          }
+        }
+      }
+    },
     "Channel type": {
       "extractionState": "manual",
       "localizations": {
@@ -269,6 +371,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "聊天范围"
+          }
+        }
+      }
+    },
+    "Client #%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Client #%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "客户端 #%@"
+          }
+        }
+      }
+    },
+    "Client database ID": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Client database ID"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "客户端数据库 ID"
           }
         }
       }
@@ -392,6 +528,23 @@
         }
       }
     },
+    "Could not load data: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not load data: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取数据：%@"
+          }
+        }
+      }
+    },
     "Couldn’t Join Channel": {
       "extractionState": "manual",
       "localizations": {
@@ -511,6 +664,74 @@
         }
       }
     },
+    "Effective permissions": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Effective permissions"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有效权限"
+          }
+        }
+      }
+    },
+    "Effective value unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Effective value unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有效值未知"
+          }
+        }
+      }
+    },
+    "Effective value: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Effective value: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有效值：%@"
+          }
+        }
+      }
+    },
+    "Empty result": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empty result"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空结果"
+          }
+        }
+      }
+    },
     "Enable Microphone": {
       "extractionState": "manual",
       "localizations": {
@@ -575,6 +796,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "全局按键说话（⌥⇧空格）"
+          }
+        }
+      }
+    },
+    "Groups": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Groups"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "群组"
           }
         }
       }
@@ -783,6 +1021,57 @@
         }
       }
     },
+    "Negated": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Negated"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取反（Negate）"
+          }
+        }
+      }
+    },
+    "No groups returned.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No groups returned."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有群组记录。"
+          }
+        }
+      }
+    },
+    "No permissions returned.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No permissions returned."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有权限记录。"
+          }
+        }
+      }
+    },
     "OK": {
       "extractionState": "manual",
       "localizations": {
@@ -796,6 +1085,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "好"
+          }
+        }
+      }
+    },
+    "Offline permission preview": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline permission preview"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离线权限预览"
           }
         }
       }
@@ -851,6 +1157,40 @@
         }
       }
     },
+    "Permission denied (ID: %@).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permission denied (ID: %@)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取权限不足（权限编号：%@）。"
+          }
+        }
+      }
+    },
+    "Permission denied.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permission denied."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取权限不足。"
+          }
+        }
+      }
+    },
     "Playback unavailable: %@": {
       "extractionState": "manual",
       "localizations": {
@@ -902,6 +1242,23 @@
         }
       }
     },
+    "Read failure": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read failure"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取失败"
+          }
+        }
+      }
+    },
     "Reconnecting…": {
       "extractionState": "manual",
       "localizations": {
@@ -915,6 +1272,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在重新连接…"
+          }
+        }
+      }
+    },
+    "Request timed out.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request timed out."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求超时。"
+          }
+        }
+      }
+    },
+    "Sample response": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sample response"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模拟响应"
           }
         }
       }
@@ -1038,6 +1429,40 @@
         }
       }
     },
+    "Server group #%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server group #%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器组 #%@"
+          }
+        }
+      }
+    },
+    "Server groups": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server groups"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器组"
+          }
+        }
+      }
+    },
     "Show OpenTS": {
       "extractionState": "manual",
       "localizations": {
@@ -1051,6 +1476,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "显示 OpenTS"
+          }
+        }
+      }
+    },
+    "Skip": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跳过（Skip）"
           }
         }
       }
@@ -1255,6 +1697,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "语音处理不可用，已切换到普通麦克风输入。"
+          }
+        }
+      }
+    },
+    "With data": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With data"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有数据"
           }
         }
       }

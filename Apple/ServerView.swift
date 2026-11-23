@@ -7,6 +7,9 @@ struct ServerView: View {
 
     @State private var lockedRoom: Room?
     @State private var password = ""
+    #if DEBUG
+    @State private var showingPermissionPreview = false
+    #endif
     @State private var showingChat = false
     @State private var showingIdentity = false
 
@@ -39,6 +42,10 @@ struct ServerView: View {
                 }
                 BookmarkSection(address: $model.address, nickname: $model.nickname)
                     .disabled(model.active)
+                #if DEBUG
+                Button("Offline permission preview") { showingPermissionPreview = true }
+                    .sheet(isPresented: $showingPermissionPreview) { OfflinePermissionsView() }
+                #endif
                 if let error = model.error { Text(error).foregroundStyle(.red) }
             }
             .formStyle(.grouped)
