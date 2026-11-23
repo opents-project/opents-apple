@@ -16,4 +16,6 @@ open OpenTS.xcodeproj
 
 Select the macOS or iOS scheme. The packaging script produces debug libraries for Apple Silicon Macs, arm64 iOS devices and arm64 simulators. To build and launch the Mac app directly, use `./script/build_and_run.sh`.
 
+To keep local macOS Debug builds on one signing identity, set `CODE_SIGN_STYLE = Manual`, `CODE_SIGN_IDENTITY` (the certificate fingerprint from `security find-identity -v -p codesigning`), and `DEVELOPMENT_TEAM` in `Config/macOS-Debug.local.xcconfig`. Git ignores this machine-specific file. The first switch from ad-hoc signing can require Keychain approval for the existing TS3 identity.
+
 [验收清单](ACCEPTANCE.zh-CN.md) · [中文实施计划](PLAN.zh-CN.md) · [Apache License 2.0](LICENSE)

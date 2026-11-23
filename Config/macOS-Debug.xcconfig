@@ -1,0 +1,2 @@
+// Developers can pin their own signing identity across local builds.
+#include? "macOS-Debug.local.xcconfig"

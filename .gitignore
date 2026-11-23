@@ -3,3 +3,4 @@
 /OpenTS.xcodeproj/
 /Apple/Generated/
 .DS_Store
+/Config/macOS-Debug.local.xcconfig

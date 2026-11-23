@@ -28,6 +28,8 @@ targets:
   OpenTS-macOS:
     templates: [Client]
     platform: macOS
+    configFiles:
+      Debug: Config/macOS-Debug.xcconfig
   OpenTS-iOS:
     templates: [Client]
     platform: iOS
