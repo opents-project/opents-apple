@@ -7,6 +7,7 @@ struct ServerView: View {
 
     @State private var lockedRoom: Room?
     @State private var password = ""
+    @State private var showingChat = false
     @State private var showingIdentity = false
 
     private func requestJoin(_ room: Room) {
@@ -68,6 +69,7 @@ struct ServerView: View {
                 }
                 .navigationTitle(model.server)
                 .toolbar {
+                    Button("Text chat", systemImage: "text.bubble") { showingChat = true }
                     Button("My Identity", systemImage: "person.text.rectangle") { showingIdentity = true }
                     Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right", action: model.disconnect)
                 }
@@ -100,6 +102,7 @@ struct ServerView: View {
                     ContentUnavailableView("Select a channel", systemImage: "bubble.left.and.bubble.right")
                 }
             }
+            .sheet(isPresented: $showingChat) { ChatView(model: model) }
             .safeAreaInset(edge: .bottom) { VoiceControls(audio: model.audio) }
             .alert("Channel Password", isPresented: Binding(get: { lockedRoom != nil }, set: { if !$0 { lockedRoom = nil } }), presenting: lockedRoom) { room in
                 SecureField("Password", text: $password)

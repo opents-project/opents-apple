@@ -256,6 +256,23 @@
         }
       }
     },
+    "Chat destination": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat destination"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天范围"
+          }
+        }
+      }
+    },
     "Client is not ready": {
       "extractionState": "manual",
       "localizations": {
@@ -409,6 +426,23 @@
         }
       }
     },
+    "Current channel": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current channel"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前频道"
+          }
+        }
+      }
+    },
     "Delete Bookmark": {
       "extractionState": "manual",
       "localizations": {
@@ -439,6 +473,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "断开连接"
+          }
+        }
+      }
+    },
+    "Done": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成"
           }
         }
       }
@@ -490,6 +541,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "启用声音输出"
+          }
+        }
+      }
+    },
+    "Enter a message.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a message."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入消息。"
           }
         }
       }
@@ -592,6 +660,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "人数未知"
+          }
+        }
+      }
+    },
+    "Message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "消息"
           }
         }
       }
@@ -902,6 +987,40 @@
         }
       }
     },
+    "Send": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送"
+          }
+        }
+      }
+    },
+    "Server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器"
+          }
+        }
+      }
+    },
     "Server connection timed out": {
       "extractionState": "manual",
       "localizations": {
@@ -987,6 +1106,23 @@
         }
       }
     },
+    "Text chat": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text chat"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文字聊天"
+          }
+        }
+      }
+    },
     "The server declined the channel change: %@ (error code: %@).": {
       "extractionState": "manual",
       "localizations": {
@@ -1000,6 +1136,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "服务器拒绝了频道切换请求：%@（错误码：%@）。"
+          }
+        }
+      }
+    },
+    "The server did not confirm delivery.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server did not confirm delivery."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器尚未确认是否送达。"
           }
         }
       }
@@ -1034,6 +1187,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "发言模式"
+          }
+        }
+      }
+    },
+    "Unable to queue the message.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to queue the message."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时无法提交消息。"
           }
         }
       }
@@ -1085,6 +1255,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "语音处理不可用，已切换到普通麦克风输入。"
+          }
+        }
+      }
+    },
+    "You lack permission to send this message.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You lack permission to send this message."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前身份没有发送此消息的权限。"
+          }
+        }
+      }
+    },
+    "Your current channel has changed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your current channel has changed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你所在的频道已变更。"
           }
         }
       }

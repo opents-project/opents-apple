@@ -1,4 +1,6 @@
+mod chat;
 mod voice;
+pub use chat::{ChatLine, ChatScope};
 use futures::StreamExt;
 use tsclientlib::Identity;
 
@@ -68,6 +70,8 @@ struct JoinRequest {
 pub struct Session {
     state: Arc<Mutex<Snapshot>>,
     voice: Arc<Mutex<Arc<Voice>>>,
+    inbox: Arc<Mutex<chat::Inbox>>,
+    messages: mpsc::Sender<chat::SendRequest>,
     joins: mpsc::Sender<JoinRequest>,
     stop: Mutex<Option<oneshot::Sender<()>>>,
 }
@@ -81,6 +85,9 @@ impl Session {
         let io = Voice::pair();
         let voice = Arc::new(Mutex::new(io.voice.clone()));
         let current_voice = voice.clone();
+        let inbox = Arc::new(Mutex::new(chat::Inbox::default()));
+        let worker_inbox = inbox.clone();
+        let (messages, chat_requests) = mpsc::channel(1);
         let (joins, requests) = mpsc::channel(1);
         let (stop, closed) = oneshot::channel();
         std::thread::spawn(move || {
@@ -95,6 +102,8 @@ impl Session {
                         identity,
                         closed,
                         requests,
+                        chat_requests,
+                        &worker_inbox,
                         io,
                         &current_voice,
                         &worker,
@@ -110,6 +119,8 @@ impl Session {
         Arc::new(Self {
             state,
             voice,
+            inbox,
+            messages,
             joins,
             stop: Mutex::new(Some(stop)),
         })
@@ -121,6 +132,37 @@ impl Session {
 
     pub fn snapshot(&self) -> Snapshot {
         self.state.lock().unwrap().clone()
+    }
+
+    pub fn take_chat(&self) -> Vec<ChatLine> {
+        self.inbox.lock().unwrap().drain()
+    }
+
+    pub async fn send_chat(
+        &self,
+        scope: ChatScope,
+        text: String,
+        generation: u64,
+    ) -> Option<String> {
+        if text.trim().is_empty() {
+            return Some("Enter a message.".into());
+        }
+        let (reply, result) = oneshot::channel();
+        if self
+            .messages
+            .try_send(chat::SendRequest {
+                scope,
+                text,
+                generation,
+                reply,
+            })
+            .is_err()
+        {
+            return Some("Unable to queue the message.".into());
+        }
+        result
+            .await
+            .unwrap_or_else(|_| Some("Connection closed".into()))
     }
 
     pub async fn join_channel(&self, channel: u64, password: String) -> Option<JoinFailure> {
@@ -169,6 +211,8 @@ async fn run(
     identity: String,
     mut closed: oneshot::Receiver<()>,
     mut requests: mpsc::Receiver<JoinRequest>,
+    mut chat_requests: mpsc::Receiver<chat::SendRequest>,
+    inbox: &Mutex<chat::Inbox>,
     mut io: voice::AudioIo,
     current_voice: &Mutex<Arc<Voice>>,
     state: &Mutex<Snapshot>,
@@ -191,6 +235,9 @@ async fn run(
     tokio::pin!(end_talk);
     let mut ready = false;
     let mut audio_generation = 0;
+    let mut pending_chat: Option<(tsclientlib::MessageHandle, chat::SendRequest, String)> = None;
+    let chat_deadline = tokio::time::sleep(Duration::ZERO);
+    tokio::pin!(chat_deadline);
     let mut pending = None;
     let join_deadline = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(join_deadline);
@@ -232,6 +279,32 @@ async fn run(
                 if let Some((_, reply)) = pending.take() {
                     let reply: oneshot::Sender<Option<JoinFailure>> = reply;
                     let _ = reply.send(Some("Channel change timed out".into()));
+                }
+                continue;
+            }
+            _ = &mut chat_deadline, if pending_chat.is_some() => {
+                if let Some((_, request, _)) = pending_chat.take() {
+                    let _ = request.reply.send(Some("The server did not confirm delivery.".into()));
+                }
+                continue;
+            }
+            request = chat_requests.recv(), if pending_chat.is_none() => {
+                let Some(request) = request else { break };
+                let sent = (|| {
+                    if !ready || request.generation != audio_generation { return Err("Connection interrupted".into()); }
+                    let book = con.get_state().map_err(|e| e.to_string())?;
+                    let me = book.clients.get(&book.own_client).ok_or("Client is not ready")?;
+                    let target = request.scope.target(Some(me.channel.0))?;
+                    let sender = me.name.clone();
+                    let handle = book.send_message(target, &request.text).send_with_result(&mut con).map_err(|e| e.to_string())?;
+                    Ok((handle, sender))
+                })();
+                match sent {
+                    Ok((handle,sender)) => {
+                        pending_chat = Some((handle, request, sender));
+                        chat_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(10));
+                    }
+                    Err(error) => { let _ = request.reply.send(Some(error)); }
                 }
                 continue;
             }
@@ -290,7 +363,28 @@ async fn run(
                     let _ = reply.send(reason);
                 }
             }
-            StreamItem::BookEvents(_) if ready => (),
+            StreamItem::MessageResult(handle, result)
+                if pending_chat.as_ref().is_some_and(|p| p.0 == handle) =>
+            {
+                if let Some((_, request, sender)) = pending_chat.take() {
+                    let failure = result.err().map(|e| match e.error {
+                        tsclientlib::TsError::PermissionsClientInsufficient => {
+                            "You lack permission to send this message.".into()
+                        }
+                        _ => e.to_string(),
+                    });
+                    inbox.lock().unwrap().finish(request, sender, failure);
+                }
+                continue;
+            }
+            StreamItem::BookEvents(events) if ready => {
+                let book = con.get_state().map_err(|e| e.to_string())?;
+                let current = book.clients.get(&book.own_client).map(|me| me.channel.0);
+                inbox
+                    .lock()
+                    .unwrap()
+                    .receive(events, book.own_client, current);
+            }
             StreamItem::DisconnectedTemporarily(_) => {
                 if ready {
                     deadline
@@ -301,6 +395,9 @@ async fn run(
                 last_codec = None;
                 if let Some((_, reply)) = pending.take() {
                     let _ = reply.send(Some("Connection interrupted".into()));
+                }
+                if let Some((_, request, _)) = pending_chat.take() {
+                    let _ = request.reply.send(Some("Connection interrupted".into()));
                 }
                 io = replace_audio(&io, current_voice);
                 audio_generation += 1;

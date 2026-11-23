@@ -49,6 +49,8 @@ final class ServerModel: ObservableObject {
     @Published private(set) var currentChannel: UInt64?
     @Published private(set) var joining = false
     @Published var joinError: String?
+    @Published var chat = ChatState()
+    private var generation: UInt64 = 0
     let audio = VoiceAudio()
     private let cues = ChannelSounds()
     private var session: Session?
@@ -73,7 +75,10 @@ final class ServerModel: ObservableObject {
                     self?.error = NSLocalizedString(failure, comment: "Connection error")
                     return
                 }
+                let batch = connection.takeChat()
+                if !batch.isEmpty { self?.chat.receive(batch) }
                 if update != previous {
+                    self?.generation = update.audioGeneration
                     self?.reconnecting = update.reconnecting
                     if update.reconnecting {
                         if previous?.server.isEmpty == false { self?.play(.disconnected) }
@@ -114,7 +119,21 @@ final class ServerModel: ObservableObject {
         if audio.output { cues.play(cue) }
     }
 
+    func sendChat(_ scope: ChatScope) {
+        guard let session, !server.isEmpty, chat.sending == nil, let text = chat.drafts[scope],
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let expected = generation
+        chat.sending = scope
+        chat.errors[scope] = nil
+        Task {
+            let failure = await session.sendChat(scope: scope, text: text, generation: expected)
+            guard self.session === session else { return }
+            chat.finish(scope, text: text, failure: failure)
+        }
+    }
+
     func disconnect() {
+        chat = ChatState()
         if !server.isEmpty { play(.disconnected) }
         audio.disconnect()
         joining = false
