@@ -4,6 +4,7 @@ import SwiftUI
 /// The input tap may run concurrently with button and device changes.
 final class CaptureGate: @unchecked Sendable {
     private let lock = NSLock()
+    private var epoch: UInt64 = 0
     private var held = false
     private var remainder: [Float] = []
 
@@ -29,10 +30,17 @@ final class CaptureGate: @unchecked Sendable {
         threshold = newThreshold
     }
 
-    func consume(_ input: AVAudioPCMBuffer, converter: AVAudioConverter, send: ([Float]) -> Void) {
+    func consume(_ input: AVAudioPCMBuffer, converter: AVAudioConverter, epoch newEpoch: UInt64 = 1, send: ([Float]) -> Void) {
         lock.lock()
         defer { lock.unlock() }
-        guard held || threshold != nil else { return }
+        if epoch != newEpoch {
+            converter.reset()
+            remainder.removeAll(keepingCapacity: true)
+            tailFrames = 0
+            level = -90
+            epoch = newEpoch
+        }
+        guard epoch != 0, held || threshold != nil else { return }
         let format = converter.outputFormat
         let capacity = ceil(Double(input.frameLength) * format.sampleRate / input.format.sampleRate) + 32
         guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: UInt32(capacity)) else { return }
@@ -44,12 +52,22 @@ final class CaptureGate: @unchecked Sendable {
             result.pointee = .haveData
             return input
         }
-        guard status != .error, let samples = output.floatChannelData?[0] else { return }
-        remainder.append(contentsOf: UnsafeBufferPointer(start: samples, count: Int(output.frameLength)))
-        while remainder.count >= 960 {
-            let frame = remainder.prefix(960)
+        guard status != .error, let channels = output.floatChannelData else { return }
+        let count = Int(output.frameLength)
+        let width = Int(format.channelCount)
+        if width == 1 {
+            remainder.append(contentsOf: UnsafeBufferPointer(start: channels[0], count: count))
+        } else {
+            for i in 0..<count {
+                remainder.append(channels[0][i])
+                remainder.append(channels[1][i])
+            }
+        }
+        let samplesPerPacket = 960 * width
+        while remainder.count >= samplesPerPacket {
+            let frame = remainder.prefix(samplesPerPacket)
             if let threshold {
-                let power = frame.reduce(0.0) { $0 + Double($1) * Double($1) } / 960
+                let power = frame.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(samplesPerPacket)
                 level = 10 * log10(max(power, 1e-9))
                 if level >= threshold { tailFrames = 13 }
                 if tailFrames > 0 {
@@ -59,7 +77,7 @@ final class CaptureGate: @unchecked Sendable {
             } else {
                 send(Array(frame))
             }
-            remainder.removeFirst(960)
+            remainder.removeFirst(samplesPerPacket)
         }
     }
 }
@@ -233,12 +251,13 @@ final class VoiceAudio: ObservableObject {
             if processing { try engine.inputNode.setVoiceProcessingEnabled(true) }
             let inputFormat = engine.inputNode.outputFormat(forBus: 0)
             guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
-                  let mono = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1),
-                  let converter = AVAudioConverter(from: inputFormat, to: mono) else {
+                  let captureFormat = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: min(2, inputFormat.channelCount)),
+                  let converter = AVAudioConverter(from: inputFormat, to: captureFormat) else {
                 throw NSError(domain: "OpenTS", code: 1, userInfo: [NSLocalizedDescriptionKey: String(localized: "Microphone format unavailable")])
             }
             engine.inputNode.installTap(onBus: 0, bufferSize: 960, format: inputFormat) { [gate] buffer, _ in
-                gate.consume(buffer, converter: converter) { voice.submitCapture(samples: $0) }
+                let epoch = voice.captureEpoch()
+                gate.consume(buffer, converter: converter, epoch: epoch) { voice.submitPcm(epoch: epoch, samples: $0) }
             }
             installedTap = true
         }

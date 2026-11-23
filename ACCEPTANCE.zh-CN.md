@@ -9,6 +9,7 @@
 | 频道列表人数 | 每行显示该频道可见人数，未订阅用横线表示未知 | 通过 | rbq 独立身份在另一频道读到 📦 有 1 人，另有 29 个已订阅空频道 | 远端移动后的实时对照待验 |
 | 加入频道 | 已实现 | 通过 | rbq 拒绝测试身份加入训练房并返回权限编号 139，确认仍在原频道；重启后用户截图确认中文弹窗保留编号 | 成功移动及密码频道待验 |
 | Opus Voice 收发 | 已接入 | 通过 | 本机 48 kHz 单声道测试信号经 Opus 编码、语音包封装、接收端解码和双声道混音，输出频率与能量通过断言 | 同频道双向听音待验 |
+| Voice → Music → Voice | 按确认的频道用单声道 Opus Voice 或立体声 Opus Music 编码；单声道输入在 Music 中复制到左右声道 | 通过 | 左 500 Hz、右 1500 Hz 的合成 PCM 编码后解码，验证声道数与频率分离。模拟两种确认顺序、权限拒绝、超时、迟到回执及旧帧丢弃；Swift 测试验证半帧与阈值尾音隔离 | 官方客户端双向通话、真实立体声输入及 iOS 真机待验 |
 | 按键说话 | 已实现窗口内按住发送、释放停止 | 通过 | 麦克风关闭时按住不会进入讲话状态 | 真实麦克风、首尾音节、远端发言指示待验；远端实际收到后台快捷键发言待验 |
 | macOS 全局按键说话 | 可在音频菜单启用 ⌥⇧空格 | 通过 | 后台测试进程收到系统按下和释放；验证冲突、注销、过期事件丢弃和重新注册 | 实际通话待验 |
 | 本地书签 | 添加、修改、删除及回填连接表单 | 通过 | 独立偏好域跨三个进程验证多条书签写入、修改和读取；窗口自动化超时 | Mac 和 iOS 交互待验 |
@@ -39,3 +40,5 @@
 日志离线检查：在仓库根目录运行 `swiftc -D DEBUG Apple/ServerLog.swift tests/ServerLogCheck.swift -o /tmp/opents-serverlog-check && /tmp/opents-serverlog-check`。该检查只使用进程内的模拟响应。
 
 文件离线检查：运行 `swiftc -D DEBUG Apple/OfflineFiles.swift tests/OfflineFilesCheck.swift -o /tmp/opents-files-check && /tmp/opents-files-check`。模拟路径以频道根目录为起点，目录项、进度与错误均来自内存。
+
+Apple 采集切换离线检查可在生成绑定后运行 `swiftc -I build/headers -L core/target/debug -lopents_core Apple/Generated/opents_core.swift Apple/TalkHotKey.swift Apple/VoiceAudio.swift tests/ChannelCaptureCheck.swift -o /tmp/opents-channel-capture-check && /tmp/opents-channel-capture-check`。

@@ -102,6 +102,9 @@ struct ServerView: View {
                                 .disabled(model.joining)
                         }
                         LabeledContent("Audio codec", value: room.codec.replacingOccurrences(of: "Opus", with: "Opus "))
+                        if !room.audioSupported && model.currentChannel != room.id {
+                            Label("Audio unavailable for this codec", systemImage: "speaker.slash")
+                        }
                         LabeledContent("Channel type", value: NSLocalizedString(room.kind, comment: "Channel type"))
                         if room.subscribed || !room.members.isEmpty {
                             Section("Visible members (\(room.members.count))") {
@@ -114,7 +117,12 @@ struct ServerView: View {
                 }
             }
             .sheet(isPresented: $showingChat) { ChatView(model: model) }
-            .safeAreaInset(edge: .bottom) { VoiceControls(audio: model.audio) }
+            .safeAreaInset(edge: .bottom) {
+                if let id = model.currentChannel, let room = find(id, in: model.channels), !room.audioSupported {
+                    Label("Audio unavailable for this codec", systemImage: "speaker.slash")
+                        .frame(maxWidth: .infinity).padding(10).background(.bar)
+                } else { VoiceControls(audio: model.audio) }
+            }
             .alert("Channel Password", isPresented: Binding(get: { lockedRoom != nil }, set: { if !$0 { lockedRoom = nil } }), presenting: lockedRoom) { room in
                 SecureField("Password", text: $password)
                 Button("Join") { model.join(room, password: password); password = "" }

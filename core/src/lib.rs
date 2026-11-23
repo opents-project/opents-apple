@@ -40,6 +40,7 @@ pub struct Room {
     pub predecessor: u64,
     pub name: String,
     pub codec: String,
+    pub audio_supported: bool,
     pub kind: String,
     pub members: Vec<String>,
     pub member_details: Vec<RoomMember>,
@@ -205,6 +206,59 @@ impl Session {
     }
 }
 
+struct PendingJoin {
+    handle: tsclientlib::MessageHandle,
+    target: u64,
+    accepted: bool,
+    reply: oneshot::Sender<Option<JoinFailure>>,
+}
+
+impl PendingJoin {
+    fn finish_with_error(pending: &mut Option<Self>, error: JoinFailure) {
+        if let Some(join) = pending.take() {
+            let _ = join.reply.send(Some(error));
+        }
+    }
+
+    fn result(
+        pending: &mut Option<Self>,
+        handle: tsclientlib::MessageHandle,
+        error: Option<JoinFailure>,
+    ) {
+        let Some(join) = pending.as_mut().filter(|join| join.handle == handle) else {
+            return;
+        };
+        if let Some(error) = error {
+            Self::finish_with_error(pending, error);
+        } else {
+            join.accepted = true;
+        }
+    }
+}
+
+fn supported_codec(codec: tsclientlib::Codec) -> Option<CodecType> {
+    match codec {
+        tsclientlib::Codec::OpusVoice => Some(CodecType::OpusVoice),
+        tsclientlib::Codec::OpusMusic => Some(CodecType::OpusMusic),
+        _ => None,
+    }
+}
+
+// Command results and the own-client channel update can arrive in either order.
+fn capture_channel(
+    pending: &mut Option<PendingJoin>,
+    current: Option<(u64, tsclientlib::Codec)>,
+) -> Option<(u64, CodecType)> {
+    if let Some(join) = pending {
+        if !join.accepted || current.map(|c| c.0) != Some(join.target) {
+            return None;
+        }
+        let _ = pending.take().unwrap().reply.send(None);
+    }
+    let (id, codec) = current?;
+    Some((id, supported_codec(codec)?))
+}
+
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(35);
 
 async fn stop_or_timeout(
@@ -243,7 +297,6 @@ async fn run(
         .map_err(|e| e.to_string())?;
     let deadline = tokio::time::sleep(CONNECTION_TIMEOUT);
     tokio::pin!(deadline);
-    let encoder = voice::encoder()?;
     let mut last_codec = None;
     let end_talk = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(end_talk);
@@ -256,22 +309,27 @@ async fn run(
     let join_deadline = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(join_deadline);
     loop {
+        let current = if ready {
+            let book = con.get_state().map_err(|e| e.to_string())?;
+            book.clients
+                .get(&book.own_client)
+                .and_then(|me| book.channels.get(&me.channel))
+                .map(|room| (room.id.0, room.codec))
+        } else {
+            None
+        };
+        if io.set_channel(capture_channel(&mut pending, current))? {
+            last_codec = None;
+        }
         let event = tokio::select! {
             stop = stop_or_timeout(&mut closed, deadline.as_mut(), ready) => { stop?; break; },
             frame = io.capture.recv(), if ready => {
-                if let Some(samples) = frame {
-                    if con.can_send_audio() && io.enabled.borrow().can_capture() {
-                        let book = con.get_state().map_err(|e| e.to_string())?;
-                        let codec = book.clients.get(&book.own_client).and_then(|c| book.channels.get(&c.channel)).map(|c| c.codec);
-                        let codec = match codec {
-                            Some(tsclientlib::Codec::OpusVoice) => CodecType::OpusVoice,
-                            Some(tsclientlib::Codec::OpusMusic) => CodecType::OpusMusic,
-                            _ => continue,
-                        };
-                        con.send_audio(voice::encode(&encoder, &samples, codec)?).map_err(|e| e.to_string())?;
-                        last_codec = Some(codec);
-                        end_talk.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(65));
-                    }
+                let Some(frame) = frame else { break };
+                if !con.can_send_audio() { continue; }
+                if let Some((codec, packet)) = io.packet(frame)? {
+                    con.send_audio(packet).map_err(|e| e.to_string())?;
+                    last_codec = Some(codec);
+                    end_talk.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(65));
                 }
                 continue;
             }
@@ -290,10 +348,7 @@ async fn run(
                 continue;
             }
             _ = &mut join_deadline, if pending.is_some() => {
-                if let Some((_, reply)) = pending.take() {
-                    let reply: oneshot::Sender<Option<JoinFailure>> = reply;
-                    let _ = reply.send(Some("Channel change timed out".into()));
-                }
+                PendingJoin::finish_with_error(&mut pending, "Channel change timed out".into());
                 continue;
             }
             _ = &mut chat_deadline, if pending_chat.is_some() => {
@@ -331,7 +386,7 @@ async fn run(
                 }).and_then(|cmd| cmd.send_with_result(&mut con).map_err(|e| e.to_string()));
                 match sent {
                     Ok(handle) => {
-                        pending = Some((handle, request.reply));
+                        pending = Some(PendingJoin { handle, target: request.channel, accepted: false, reply: request.reply });
                         join_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(10));
                     }
                     Err(error) => { let _ = request.reply.send(Some(JoinFailure::Other { message: error })); }
@@ -367,24 +422,20 @@ async fn run(
                 continue;
             }
             StreamItem::MessageResult(handle, result)
-                if pending
-                    .as_ref()
-                    .is_some_and(|(expected, _)| *expected == handle) =>
+                if pending.as_ref().is_some_and(|join| join.handle == handle) =>
             {
-                if let Some((_, reply)) = pending.take() {
-                    let reason = result.err().map(|e| match e.error {
-                        tsclientlib::TsError::PermissionsClientInsufficient => {
-                            JoinFailure::PermissionDenied {
-                                permission: e.missing_permission.map(|p| p.0),
-                            }
+                let error = result.err().map(|e| match e.error {
+                    tsclientlib::TsError::PermissionsClientInsufficient => {
+                        JoinFailure::PermissionDenied {
+                            permission: e.missing_permission.map(|p| p.0),
                         }
-                        other => JoinFailure::ServerRejected {
-                            code: other as u32,
-                            reason: other.to_string(),
-                        },
-                    });
-                    let _ = reply.send(reason);
-                }
+                    }
+                    other => JoinFailure::ServerRejected {
+                        code: other as u32,
+                        reason: other.to_string(),
+                    },
+                });
+                PendingJoin::result(&mut pending, handle, error);
             }
             StreamItem::MessageResult(handle, result)
                 if pending_chat.as_ref().is_some_and(|p| p.0 == handle) =>
@@ -416,9 +467,7 @@ async fn run(
                 }
                 ready = false;
                 last_codec = None;
-                if let Some((_, reply)) = pending.take() {
-                    let _ = reply.send(Some("Connection interrupted".into()));
-                }
+                PendingJoin::finish_with_error(&mut pending, "Connection interrupted".into());
                 if let Some((_, request, _)) = pending_chat.take() {
                     let _ = request.reply.send(Some("Connection interrupted".into()));
                 }
@@ -457,6 +506,7 @@ async fn run(
                     predecessor: room.order.0,
                     name: room.name.clone(),
                     codec: format!("{:?}", room.codec),
+                    audio_supported: supported_codec(room.codec).is_some(),
                     kind: format!("{:?}", room.channel_type),
                     members: member_details
                         .iter()
@@ -544,16 +594,22 @@ mod reconnect_tests {
         let mut io = Voice::pair();
         let old = io.voice.clone();
         let current = Mutex::new(old.clone());
+        io.set_channel(Some((1, CodecType::OpusVoice))).unwrap();
         old.set_devices(true, true, false, false);
         old.submit_capture(vec![0.25; voice::FRAME]);
         io = replace_audio(&io, &current);
         old.set_devices(true, true, false, false);
         old.submit_capture(vec![0.5; voice::FRAME]);
+        io.set_channel(Some((1, CodecType::OpusVoice))).unwrap();
         let new = current.lock().unwrap().clone();
         new.submit_capture(vec![0.75; voice::FRAME]);
         assert!(io.capture.try_recv().is_err());
         new.set_devices(true, true, false, false);
         new.submit_capture(vec![1.0; voice::FRAME]);
-        assert_eq!(io.capture.try_recv().unwrap(), vec![1.0; voice::FRAME]);
+        let frame = io.capture.try_recv().unwrap();
+        assert!(io.packet(frame).unwrap().is_some());
     }
 }
+
+#[cfg(test)]
+mod channel_audio_tests;

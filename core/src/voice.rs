@@ -1,8 +1,11 @@
-//! The wire uses Opus. The Apple adapter supplies mono 48 kHz PCM in 20 ms
+//! The wire uses Opus. The Apple adapter supplies mono or stereo 48 kHz PCM in 20 ms
 //! frames and pulls interleaved stereo PCM from the per-speaker jitter buffers.
 use audiopus::{coder::Encoder, Application, Channels, SampleRate};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 use tokio::sync::{mpsc, watch};
 use tsclientlib::{audio::AudioHandler, ClientId};
 use tsproto_packets::packets::{AudioData, CodecType, InAudioBuf, OutAudio, OutPacket};
@@ -89,15 +92,71 @@ impl Playback {
 
 #[derive(uniffi::Object)]
 pub struct Voice {
-    capture: mpsc::Sender<Vec<f32>>,
+    capture: mpsc::Sender<CapturedFrame>,
+    capture_epoch: AtomicU64,
     enabled: watch::Sender<DeviceState>,
     playback: Mutex<Playback>,
 }
 
 pub(crate) struct AudioIo {
-    pub capture: mpsc::Receiver<Vec<f32>>,
+    pub capture: mpsc::Receiver<CapturedFrame>,
+    route: Option<(u64, CodecType)>,
+    epoch: u64,
+    encoder: Option<Encoder>,
     pub enabled: watch::Receiver<DeviceState>,
     pub voice: Arc<Voice>,
+}
+
+pub(crate) struct CapturedFrame {
+    epoch: u64,
+    samples: Vec<f32>,
+}
+
+impl AudioIo {
+    pub(crate) fn set_channel(&mut self, route: Option<(u64, CodecType)>) -> Result<bool, String> {
+        if route == self.route {
+            return Ok(false);
+        }
+        let encoder = match route.map(|(_, codec)| codec) {
+            Some(CodecType::OpusVoice) => Some(encoder()?),
+            Some(CodecType::OpusMusic) => Some(
+                Encoder::new(SampleRate::Hz48000, Channels::Stereo, Application::Audio)
+                    .map_err(|e| e.to_string())?,
+            ),
+            Some(_) => return Err("Unsupported audio codec".into()),
+            None => None,
+        };
+        self.epoch += 1;
+        self.voice.capture_epoch.store(
+            if route.is_some() { self.epoch } else { 0 },
+            Ordering::Release,
+        );
+        self.route = route;
+        self.encoder = encoder;
+        Ok(true)
+    }
+
+    pub(crate) fn packet(
+        &self,
+        frame: CapturedFrame,
+    ) -> Result<Option<(CodecType, OutPacket)>, String> {
+        let (Some((_, codec)), Some(encoder)) = (self.route, &self.encoder) else {
+            return Ok(None);
+        };
+        if frame.epoch != self.epoch || !self.enabled.borrow().can_capture() {
+            return Ok(None);
+        }
+        let samples = match (codec, frame.samples.len()) {
+            (CodecType::OpusVoice, n) if n == FRAME * 2 => frame
+                .samples
+                .chunks_exact(2)
+                .map(|lr| 0.5 * (lr[0] + lr[1]))
+                .collect(),
+            (CodecType::OpusMusic, FRAME) => frame.samples.iter().flat_map(|s| [*s, *s]).collect(),
+            _ => frame.samples,
+        };
+        Ok(Some((codec, encode(encoder, &samples, codec)?)))
+    }
 }
 
 impl Voice {
@@ -106,9 +165,13 @@ impl Voice {
         let (enabled, changes) = watch::channel(DeviceState::default());
         AudioIo {
             capture: frames,
+            route: None,
+            epoch: 0,
+            encoder: None,
             enabled: changes,
             voice: Arc::new(Self {
                 capture,
+                capture_epoch: AtomicU64::new(0),
                 enabled,
                 playback: Mutex::default(),
             }),
@@ -146,8 +209,22 @@ impl Voice {
     }
 
     pub fn submit_capture(&self, samples: Vec<f32>) {
-        if samples.len() == FRAME && self.enabled.borrow().can_capture() {
-            let _ = self.capture.try_send(samples);
+        if samples.len() == FRAME {
+            self.submit_pcm(self.capture_epoch(), samples);
+        }
+    }
+
+    pub fn capture_epoch(&self) -> u64 {
+        self.capture_epoch.load(Ordering::Acquire)
+    }
+
+    pub fn submit_pcm(&self, epoch: u64, samples: Vec<f32>) {
+        if epoch != 0
+            && epoch == self.capture_epoch()
+            && (samples.len() == FRAME || samples.len() == 2 * FRAME)
+            && self.enabled.borrow().can_capture()
+        {
+            let _ = self.capture.try_send(CapturedFrame { epoch, samples });
         }
     }
 
