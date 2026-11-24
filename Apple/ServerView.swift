@@ -14,6 +14,7 @@ struct ServerView: View {
     #endif
     @State private var showingChat = false
     @State private var showingIdentity = false
+    @State private var managingIdentities = false
 
     private func requestJoin(_ room: Room) {
         guard model.currentChannel != room.id, !model.joining else { return }
@@ -32,6 +33,8 @@ struct ServerView: View {
                         .keyboardType(.URL)
                         #endif
                     TextField("Your nickname", text: $model.nickname)
+                    Button("Identities", systemImage: "person.text.rectangle") { managingIdentities = true }
+                        .sheet(isPresented: $managingIdentities) { IdentityImportView(selectedUID: $model.selectedIdentityUID) }
                 }
                 .disabled(model.active)
                 if model.active {

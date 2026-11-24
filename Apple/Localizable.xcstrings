@@ -579,6 +579,23 @@
         }
       }
     },
+    "Connection identity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection identity"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接时使用的身份"
+          }
+        }
+      }
+    },
     "Connection interrupted": {
       "extractionState": "manual",
       "localizations": {
@@ -677,6 +694,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法加入频道"
+          }
+        }
+      }
+    },
+    "Couldn’t read a TS3 identity from this file.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t read a TS3 identity from this file."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法从该文件读取 TS3 身份。"
           }
         }
       }
@@ -1051,6 +1085,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "按住说话"
+          }
+        }
+      }
+    },
+    "Identities": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Identities"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "身份管理"
+          }
+        }
+      }
+    },
+    "Import TS3 identity…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import TS3 identity…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导入 TS3 身份…"
+          }
+        }
+      }
+    },
+    "Imported UID: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imported UID: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已导入 UID：%@"
           }
         }
       }
@@ -1442,6 +1527,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "离线服务器日志"
+          }
+        }
+      }
+    },
+    "OpenTS default identity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenTS default identity"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenTS 默认身份"
           }
         }
       }
@@ -2177,6 +2279,23 @@
         }
       }
     },
+    "The selected identity is unavailable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The selected identity is unavailable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选身份不可用。"
+          }
+        }
+      }
+    },
     "The server declined the channel change: %@ (error code: %@).": {
       "extractionState": "manual",
       "localizations": {
@@ -2224,6 +2343,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "全局快捷键不可用。可使用窗口内的「按住说话」，或释放 ⌥⇧空格。"
+          }
+        }
+      }
+    },
+    "This UID is already saved: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This UID is already saved: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 UID 已保存：%@"
           }
         }
       }

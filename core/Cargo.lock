@@ -1545,10 +1545,14 @@ name = "opents-core"
 version = "0.1.0"
 dependencies = [
  "audiopus",
+ "base64 0.22.1",
  "futures",
+ "sha-1",
+ "simple_asn1",
  "tokio",
  "tsclientlib",
  "tsproto-packets",
+ "tsproto-types",
  "uniffi",
 ]
 

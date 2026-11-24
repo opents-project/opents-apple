@@ -40,6 +40,9 @@ struct ChannelNode: Identifiable {
 final class ServerModel: ObservableObject {
     @Published var address = UserDefaults.standard.string(forKey: "lastServer") ?? ""
     @Published var nickname = UserDefaults.standard.string(forKey: "lastNickname") ?? "OpenTS"
+    @Published var selectedIdentityUID = UserDefaults.standard.string(forKey: "connectionIdentityUID") {
+        didSet { UserDefaults.standard.set(selectedIdentityUID, forKey: "connectionIdentityUID") }
+    }
     @Published private(set) var identityUID = ""
     @Published private(set) var server = ""
     @Published private(set) var channels: [ChannelNode] = []
@@ -60,7 +63,7 @@ final class ServerModel: ObservableObject {
         guard !active else { return }
         error = nil
         let identity: String
-        do { identity = try IdentityStore().loadOrCreate() }
+        do { identity = try IdentityStore().forConnection(selectedUID: selectedIdentityUID) }
         catch { self.error = error.localizedDescription; return }
         let destination = address.trimmingCharacters(in: .whitespacesAndNewlines)
         let connection = Session(address: destination, nickname: nickname, identity: identity)

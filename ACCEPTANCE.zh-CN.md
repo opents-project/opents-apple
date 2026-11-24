@@ -20,6 +20,7 @@
 | macOS 语音设备选择 | 输入和输出分别跟随系统或保存指定设备 UID；菜单并列显示首选项和引擎实际设备；设备不可用时用默认路由，重插可恢复。iOS 使用系统路由 | 通过 | 模拟设备覆盖独立选择、偏好恢复、设备编号变化、拔插、默认设备变化、枚举失败、绑定或启动失败及实际设备不匹配；采集关闭时只绑定输出 | 真机插拔、蓝牙双工、语音处理回退、提示音输出与官方客户端双向听音待验 |
 | 临时断线及反馈 | 连接超时、重连状态、服务器拒绝及设备错误已接入 | 通过 | 虚拟时钟验证 35 秒恢复期限及主动断开优先；独立音频句柄测试验证旧队列和延迟采集无法跨连接发送；频道权限拒绝已验。真实断网后重连待验 | 待验 |
 | 本机身份持久化 | 钥匙串保存 TS3 私钥并显示公开 UID | 通过 | 两个独立进程通过 rbq 重连，复用同一测试条目，UID 相同 | 管理员组跨重启待验 |
+| TS3 身份文件导入 | 连接页可从 INI 导入到本机钥匙串，按 UID 去重。用户可手动选择连接身份；偏好只记录公开 UID | 通过 | 合成 INI 覆盖带引号、BOM、换行、短标量、计数保留及畸形输入。Mac 独立测试钥匙串服务验证重读、重复导入、默认身份保留和显式选择 | 官方客户端实际导出的文件、系统文件选择器、iPhone 真机和原服务器权限待验 |
 | 当前频道定位 | 服务器确认后展开祖先、选中并滚动到频道 | 通过 | macOS 连接后实际选中接客厅；三级频道路径通过本地断言 | 真实服务器移动到折叠子频道待验 |
 | 频道提示音 | 连接、断开、切换频道、同频道成员进入和离开 | 通过 | 五段音效在 Mac 播放时间均前进；两个测试客户端在 rbq 进出同频道，观察端正确识别进入和离开 | iOS 设备播放待验 |
 | 简体中文和英语 | 界面、菜单、应用错误、麦克风用途描述 | 通过 | 两个平台构建产物中的中英文资源逐条核对；macOS 中文界面实测 | iOS 界面待验 |
@@ -44,3 +45,5 @@
 Apple 采集切换离线检查可在生成绑定后运行 `swiftc -I build/headers -L core/target/debug -lopents_core Apple/Generated/opents_core.swift Apple/TalkHotKey.swift Apple/MacAudioDevices.swift Apple/VoiceAudio.swift tests/ChannelCaptureCheck.swift -o /tmp/opents-channel-capture-check && /tmp/opents-channel-capture-check`。
 
 macOS 设备选择离线检查可运行 `swiftc Apple/MacAudioDevices.swift tests/MacAudioDevicesCheck.swift -o /tmp/opents-device-selection && /tmp/opents-device-selection`。该检查使用合成设备和独立的临时偏好域。
+
+身份导入离线检查使用 `cargo test --locked --lib` 和 `swiftc -I build/headers -L core/target/debug -lopents_core Apple/Generated/opents_core.swift Apple/IdentityStore.swift tests/IdentityImportCheck.swift -o /tmp/opents-import-check && /tmp/opents-import-check`（Swift 命令从仓库根目录执行）。Swift 检查在内存中构造合成 INI，在随机命名的钥匙串服务下写入测试条目并在结束时清理。

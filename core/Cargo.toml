@@ -8,11 +8,15 @@ license = "Apache-2.0"
 crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
+base64 = "0.22"
+sha-1 = "0.10"
+simple_asn1 = "0.6"
 futures = "0.3"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time", "net"] }
 tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib", rev = "ee3bc6f45a7137db7793ba5593a321df400d53e5", default-features = false, features = ["default-tls", "audio"] }
 audiopus = "0.3.0-rc.0"
 tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib", rev = "ee3bc6f45a7137db7793ba5593a321df400d53e5" }
+tsproto-types = { git = "https://github.com/ReSpeak/tsclientlib", rev = "ee3bc6f45a7137db7793ba5593a321df400d53e5" }
 uniffi = "0.32"
 
 [dev-dependencies]

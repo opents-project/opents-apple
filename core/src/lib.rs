@@ -1,4 +1,6 @@
 mod chat;
+mod identity;
+pub use identity::{parse_identity_export, stored_identity_uid, ImportedIdentity};
 mod permissions;
 pub use permissions::{
     EffectivePermission, GroupKind, ListedGroup, PermissionAssignment, PermissionOverview,
@@ -285,8 +287,8 @@ async fn run(
     current_voice: &Mutex<Arc<Voice>>,
     state: &Mutex<Snapshot>,
 ) -> Result<(), String> {
-    let identity = Identity::new_from_ts_str(&identity)
-        .map_err(|_| "Saved OpenTS identity is invalid".to_string())?;
+    let identity = identity::read_stored(&identity)
+        .ok_or_else(|| "Saved OpenTS identity is invalid".to_string())?;
     let identity_uid = identity.key().to_pub().get_uid();
     let mut con = Connection::build(address)
         .identity(identity)
