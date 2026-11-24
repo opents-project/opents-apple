@@ -1,6 +1,23 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "NSLocalNetworkUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenTS uses your local network to connect to the TeamSpeak server you choose on that network."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenTS 需要访问本地网络，以连接你选择的局域网 TeamSpeak 服务器。"
+          }
+        }
+      }
+    },
     "NSMicrophoneUsageDescription": {
       "extractionState": "manual",
       "localizations": {

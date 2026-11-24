@@ -5,6 +5,7 @@
 | 功能 | 实现 | Apple 构建 | 已完成的测试 | 与官方 TS3 客户端对照或互通 |
 | --- | --- | --- | --- | --- |
 | 域名和服务器昵称 | 已实现 | 通过 | 两种入口均连接同一服务器 UID | 官方客户端事件栏显示测试身份进入和退出 |
+| iOS 本地网络用途说明 | 为连接用户选择的局域网 TeamSpeak 服务器提供简体中文和英语提示 | iPhoneOS、iOS 模拟器和 macOS 构建通过 | 修改前两个 iOS 包均缺少该键；重新生成工程后，已核对两个 iOS 包的 Info.plist 含 `NSLocalNetworkUsageDescription`，且 en 和 zh-Hans 的 InfoPlist.strings 与资源目录文案一致。iPhoneOS 使用未签名通用设备构建 | iPhone 实际权限弹窗、允许后的连接和拒绝后的表现均待验 |
 | 频道树、详情、成员 | 已实现 | 通过 | Mac 原生窗口选择频道并读取成员及属性 | 与官方客户端截图中的顺序、编码、频道类型和人数对照通过 |
 | 频道列表人数 | 每行显示该频道可见人数，未订阅用横线表示未知 | 通过 | rbq 独立身份在另一频道读到 📦 有 1 人，另有 29 个已订阅空频道 | 远端移动后的实时对照待验 |
 | 加入频道 | 已实现 | 通过 | rbq 拒绝测试身份加入训练房并返回权限编号 139，确认仍在原频道；重启后用户截图确认中文弹窗保留编号 | 成功移动及密码频道待验 |
@@ -48,3 +49,5 @@ Apple 采集切换离线检查可运行 `swiftc Apple/MicrophoneCapture.swift te
 macOS 设备选择离线检查可运行 `swiftc Apple/MacAudioDevices.swift tests/MacAudioDevicesCheck.swift -o /tmp/opents-device-selection && /tmp/opents-device-selection`。该检查使用合成设备和独立的临时偏好域。
 
 身份导入离线检查使用 `cargo test --locked --lib` 和 `swiftc -I build/headers -L core/target/debug -lopents_core Apple/Generated/opents_core.swift Apple/IdentityStore.swift tests/IdentityImportCheck.swift -o /tmp/opents-import-check && /tmp/opents-import-check`（Swift 命令从仓库根目录执行）。Swift 检查在内存中构造合成 INI，在随机命名的钥匙串服务下写入测试条目并在结束时清理。
+
+Apple TN3179 按流量路径界定本地网络。同一 Wi-Fi 或以太网链路上的服务器可直接到达，向该地址连接 UDP 套接字或发送 UDP 单播需要本地网络访问。发往经路由器转发的远端服务器的普通单播，即使目标使用私有地址，也不因该目的地址本身触发这项权限。直接单播无需声明 Bonjour 服务或申请多播 entitlement。模拟器只能用于检查包内容，权限行为须在真机验证。[Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)
