@@ -116,7 +116,12 @@ final class ServerModel: ObservableObject {
     }
 
     private func play(_ cue: ChannelSound) {
-        if audio.output { cues.play(cue) }
+        guard audio.output else { return }
+        #if os(macOS)
+        cues.play(cue, outputDeviceUID: audio.devices.actual[.output]?.uid)
+        #else
+        cues.play(cue)
+        #endif
     }
 
     func sendChat(_ scope: ChatScope) {

@@ -21,11 +21,14 @@ enum ChannelSound: String, CaseIterable {
 final class ChannelSounds {
     private var players: [ChannelSound: AVAudioPlayer] = [:]
 
-    func play(_ cue: ChannelSound) {
+    func play(_ cue: ChannelSound, outputDeviceUID: String? = nil) {
         if players[cue] == nil, let url = Bundle.main.url(forResource: cue.rawValue, withExtension: "wav") {
             players[cue] = try? AVAudioPlayer(contentsOf: url)
         }
         guard let player = players[cue] else { return }
+        #if os(macOS)
+        if player.currentDevice != outputDeviceUID { player.currentDevice = outputDeviceUID }
+        #endif
         player.currentTime = 0
         player.play()
     }

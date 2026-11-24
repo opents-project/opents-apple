@@ -105,6 +105,10 @@ final class VoiceAudio: ObservableObject {
     func connect(_ voice: Voice) {
         disconnect()
         self.voice = voice
+        #if os(macOS)
+        deviceMonitor = MacDeviceMonitor { [weak self] in self?.refreshDevices() }
+        devices.inventory = MacAudioHardware.inventory()
+        #endif
         configure(mic: false, play: true)
     }
 
@@ -127,6 +131,9 @@ final class VoiceAudio: ObservableObject {
     func toggleOutput() {
         guard let player else { configure(mic: microphone, play: true); return }
         output.toggle()
+        #if os(macOS)
+        requestedOutput = output
+        #endif
         player.volume = output ? 1 : 0
         if !output { press(false) }
         publishDevices()
@@ -142,6 +149,28 @@ final class VoiceAudio: ObservableObject {
     private var shortcutHeld = false
 
     #if os(macOS)
+    @Published private(set) var devices = MacDeviceSelection()
+    private var deviceMonitor: MacDeviceMonitor?
+    private var requestedOutput = false
+
+    var hasInputRoute: Bool { installedTap }
+    var hasOutputRoute: Bool { player != nil }
+
+    func selectDevice(_ side: DeviceSide, uid: String?) {
+        let previous = devices.preferred[side]
+        devices.choose(side, uid: uid)
+        if previous != devices.preferred[side], voice != nil, side == .output || installedTap {
+            configure(mic: microphone, play: requestedOutput)
+        }
+    }
+
+    func refreshDevices() {
+        guard voice != nil else { return }
+        if devices.updateInventory(MacAudioHardware.inventory(), microphone: installedTap, outputActive: player != nil) {
+            configure(mic: microphone, play: requestedOutput)
+        }
+    }
+
     @Published var globalShortcut = UserDefaults.standard.bool(forKey: "globalTalkShortcut") {
         didSet {
             UserDefaults.standard.set(globalShortcut, forKey: "globalTalkShortcut")
@@ -180,6 +209,9 @@ final class VoiceAudio: ObservableObject {
     }
 
     func disconnect() {
+        #if os(macOS)
+        deviceMonitor = nil
+        #endif
         stopEngine()
         voiceActivated = false
         voice = nil
@@ -200,6 +232,9 @@ final class VoiceAudio: ObservableObject {
         engine?.stop()
         previous?.stop()
         engine = nil
+        #if os(macOS)
+        devices.actual = [:]
+        #endif
         microphone = false
         output = false
         publishDevices()
@@ -210,22 +245,17 @@ final class VoiceAudio: ObservableObject {
         standardInput = false
         message = nil
         guard let voice else { return }
+        #if os(macOS)
+        requestedOutput = play
+        #endif
         if mic {
-            do {
-                try start(voice, mic: true, play: play, processing: true)
-                return
-            } catch { stopEngine() }
-            do {
-                try start(voice, mic: true, play: play, processing: false)
-                standardInput = true
-                message = String(localized: "Voice processing unavailable. Using standard microphone input.")
-                return
-            } catch {
+            do { try startAudio(voice, mic: true, play: play); return }
+            catch {
                 stopEngine()
                 message = String(localized: "Microphone unavailable: \(error.localizedDescription)")
             }
         }
-        do { try start(voice, mic: false, play: play, processing: false) }
+        do { try startAudio(voice, mic: false, play: play) }
         catch {
             stopEngine()
             let failure = String(localized: "Playback unavailable: \(error.localizedDescription)")
@@ -233,7 +263,33 @@ final class VoiceAudio: ObservableObject {
         }
     }
 
-    private func start(_ voice: Voice, mic: Bool, play: Bool, processing: Bool) throws {
+    private func startAudio(_ voice: Voice, mic: Bool, play: Bool) throws {
+        func attempt(bind: (AVAudioEngine) throws -> Void, verify: (AVAudioEngine) throws -> Void) throws {
+            if mic {
+                do { try start(voice, mic: true, play: play, processing: true, bind: bind, verify: verify); return }
+                catch { stopEngine() }
+            }
+            try start(voice, mic: mic, play: play, processing: false, bind: bind, verify: verify)
+            if mic {
+                standardInput = true
+                message = String(localized: "Voice processing unavailable. Using standard microphone input.")
+            }
+        }
+        #if os(macOS)
+        try MacDeviceSelection.start(bindings: devices.bindings(microphone: mic)) { ids in
+            do {
+                try attempt(bind: { try MacAudioHardware.bind(ids, to: $0) }, verify: { engine in
+                    devices.actual = try MacAudioHardware.readback(engine, microphone: mic, expected: ids, defaults: devices.inventory?.defaults ?? [:])
+                })
+            } catch { stopEngine(); throw error }
+        }
+        #else
+        try attempt(bind: { _ in }, verify: { _ in })
+        #endif
+    }
+
+    private func start(_ voice: Voice, mic: Bool, play: Bool, processing: Bool,
+                       bind: (AVAudioEngine) throws -> Void, verify: (AVAudioEngine) throws -> Void) throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         if mic {
@@ -247,8 +303,9 @@ final class VoiceAudio: ObservableObject {
         self.engine = engine
         let player = AVAudioPlayerNode()
         engine.attach(player)
+        if processing { try engine.inputNode.setVoiceProcessingEnabled(true) }
+        try bind(engine)
         if mic {
-            if processing { try engine.inputNode.setVoiceProcessingEnabled(true) }
             let inputFormat = engine.inputNode.outputFormat(forBus: 0)
             guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
                   let captureFormat = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: min(2, inputFormat.channelCount)),
@@ -263,6 +320,7 @@ final class VoiceAudio: ObservableObject {
         }
         engine.connect(player, to: engine.mainMixerNode, format: stereo)
         try engine.start()
+        try verify(engine)
         self.player = player
         microphone = mic
         output = play

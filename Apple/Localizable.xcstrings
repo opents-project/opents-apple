@@ -1,6 +1,23 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ (unavailable)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (unavailable)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（不可用）"
+          }
+        }
+      }
+    },
     "Access denied": {
       "extractionState": "manual",
       "localizations": {
@@ -698,6 +715,57 @@
         }
       }
     },
+    "Current device: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current device: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前设备：%@"
+          }
+        }
+      }
+    },
+    "Current device: Inactive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current device: Inactive"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前设备：未启用"
+          }
+        }
+      }
+    },
+    "Current device: Unknown": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current device: Unknown"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前设备：未知"
+          }
+        }
+      }
+    },
     "Delete Bookmark": {
       "extractionState": "manual",
       "localizations": {
@@ -919,6 +987,23 @@
         }
       }
     },
+    "Follow system default": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow system default"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随系统默认设备"
+          }
+        }
+      }
+    },
     "Global push to talk (⌥⇧Space)": {
       "extractionState": "manual",
       "localizations": {
@@ -966,6 +1051,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "按住说话"
+          }
+        }
+      }
+    },
+    "Input device": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Input device"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入设备"
           }
         }
       }
@@ -1361,6 +1463,23 @@
         }
       }
     },
+    "Output device": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Output device"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输出设备"
+          }
+        }
+      }
+    },
     "Parent folder": {
       "extractionState": "manual",
       "localizations": {
@@ -1476,6 +1595,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "播放音量"
+          }
+        }
+      }
+    },
+    "Preferred device": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preferred device"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "首选设备"
           }
         }
       }
@@ -1612,6 +1748,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "重试"
+          }
+        }
+      }
+    },
+    "Retry device discovery": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry device discovery"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新查找设备"
           }
         }
       }

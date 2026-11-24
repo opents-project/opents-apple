@@ -2,12 +2,47 @@ import SwiftUI
 
 struct VoiceMenu: View {
     @ObservedObject var audio: VoiceAudio
+    #if os(macOS)
+    @ViewBuilder
+    private func deviceMenu(_ side: DeviceSide) -> some View {
+        let selection = audio.devices
+        let options = selection.inventory?.devices[side] ?? []
+        let uid = selection.preferred[side]
+        let active = side == .input ? audio.hasInputRoute : audio.hasOutputRoute
+        Menu(side == .input ? "Input device" : "Output device") {
+            Picker("Preferred device", selection: Binding(get: { uid }, set: { audio.selectDevice(side, uid: $0) })) {
+                Text("Follow system default").tag(nil as String?)
+                ForEach(options, id: \.uid) { device in
+                    Text(verbatim: device.name).tag(Optional(device.uid))
+                }
+                if let uid, !options.contains(where: { $0.uid == uid }) {
+                    Text("\(selection.savedNames[side] ?? uid) (unavailable)").tag(Optional(uid))
+                }
+            }
+            .pickerStyle(.inline)
+            Divider()
+            if let device = selection.actual[side] {
+                Text("Current device: \(device.name)")
+            } else if active {
+                Text("Current device: Unknown")
+            } else {
+                Text("Current device: Inactive")
+            }
+            if selection.inventory == nil {
+                Button("Retry device discovery", action: audio.refreshDevices)
+            }
+        }
+    }
+    #endif
+
     var body: some View {
         Picker("Transmission mode", selection: $audio.voiceActivated) {
             Text("Push to talk").tag(false)
             Text("Voice activation").tag(true)
         }
         #if os(macOS)
+        deviceMenu(.input)
+        deviceMenu(.output)
         Toggle("Global push to talk (⌥⇧Space)", isOn: $audio.globalShortcut)
             .disabled(audio.voiceActivated)
         #endif

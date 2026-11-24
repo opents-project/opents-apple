@@ -17,7 +17,7 @@
 | 输出与静音 | 已接入 AVAudioEngine | 通过 | Mac 默认输出引擎启动、静音、恢复通过；硬件可用和用户静音独立上报；解码队列静音后输出为零 | 菜单操作、官方客户端静音标记待验 |
 | 逐用户播放控制 | 展开其他成员，可调音量 0–200%、左右声像、本地静音与复位；默认 100% 居中 | 通过 | 合成双声道 PCM 验证居中不变、左右和增益；两路合成 Opus 验证静音不改变另一人的样本、限幅、重连/切服后旧音频与设置隔离 | 真实多人通话、耳机听感、界面操作和 iOS 真机待验 |
 | 回声消除和降噪 | 优先启用 Apple Voice Processing，失败时重试普通输入，再失败时恢复播放 | 通过 | Mac 界面实测回退后出现按住说话控件 | 外放回声、双讲和环境噪声对照待验 |
-| 音频设备变更 | 监听引擎配置变更并重建 | 通过 | 插拔耳机、蓝牙路由及设备中断待验 | 待验 |
+| macOS 语音设备选择 | 输入和输出分别跟随系统或保存指定设备 UID；菜单并列显示首选项和引擎实际设备；设备不可用时用默认路由，重插可恢复。iOS 使用系统路由 | 通过 | 模拟设备覆盖独立选择、偏好恢复、设备编号变化、拔插、默认设备变化、枚举失败、绑定或启动失败及实际设备不匹配；采集关闭时只绑定输出 | 真机插拔、蓝牙双工、语音处理回退、提示音输出与官方客户端双向听音待验 |
 | 临时断线及反馈 | 连接超时、重连状态、服务器拒绝及设备错误已接入 | 通过 | 虚拟时钟验证 35 秒恢复期限及主动断开优先；独立音频句柄测试验证旧队列和延迟采集无法跨连接发送；频道权限拒绝已验。真实断网后重连待验 | 待验 |
 | 本机身份持久化 | 钥匙串保存 TS3 私钥并显示公开 UID | 通过 | 两个独立进程通过 rbq 重连，复用同一测试条目，UID 相同 | 管理员组跨重启待验 |
 | 当前频道定位 | 服务器确认后展开祖先、选中并滚动到频道 | 通过 | macOS 连接后实际选中接客厅；三级频道路径通过本地断言 | 真实服务器移动到折叠子频道待验 |
@@ -41,4 +41,6 @@
 
 文件离线检查：运行 `swiftc -D DEBUG Apple/OfflineFiles.swift tests/OfflineFilesCheck.swift -o /tmp/opents-files-check && /tmp/opents-files-check`。模拟路径以频道根目录为起点，目录项、进度与错误均来自内存。
 
-Apple 采集切换离线检查可在生成绑定后运行 `swiftc -I build/headers -L core/target/debug -lopents_core Apple/Generated/opents_core.swift Apple/TalkHotKey.swift Apple/VoiceAudio.swift tests/ChannelCaptureCheck.swift -o /tmp/opents-channel-capture-check && /tmp/opents-channel-capture-check`。
+Apple 采集切换离线检查可在生成绑定后运行 `swiftc -I build/headers -L core/target/debug -lopents_core Apple/Generated/opents_core.swift Apple/TalkHotKey.swift Apple/MacAudioDevices.swift Apple/VoiceAudio.swift tests/ChannelCaptureCheck.swift -o /tmp/opents-channel-capture-check && /tmp/opents-channel-capture-check`。
+
+macOS 设备选择离线检查可运行 `swiftc Apple/MacAudioDevices.swift tests/MacAudioDevicesCheck.swift -o /tmp/opents-device-selection && /tmp/opents-device-selection`。该检查使用合成设备和独立的临时偏好域。
