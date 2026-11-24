@@ -7,13 +7,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Use your microphone to speak in the connected TeamSpeak channel."
+            "value": "Use your microphone to test the input level or speak in a TeamSpeak channel."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "允许 OpenTS 使用麦克风，以便在当前 TeamSpeak 频道中讲话。"
+            "value": "允许 OpenTS 使用麦克风，以便测试输入电平或在 TeamSpeak 频道中讲话。"
           }
         }
       }

@@ -86,6 +86,23 @@
         }
       }
     },
+    "Allow microphone access in Settings to test your input.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow microphone access in Settings to test your input."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在系统设置中允许麦克风访问，再开始测试。"
+          }
+        }
+      }
+    },
     "Allow microphone access in System Settings to talk.": {
       "extractionState": "manual",
       "localizations": {
@@ -133,6 +150,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "音频编码"
+          }
+        }
+      }
+    },
+    "Audio input was interrupted. Start the test again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio input was interrupted. Start the test again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音频输入已中断，请重新开始测试。"
+          }
+        }
+      }
+    },
+    "Audio is measured on this device. It is never sent or saved.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio is measured on this device. It is never sent or saved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅在本机测量输入电平，音频不会发送或保存。"
           }
         }
       }
@@ -1310,6 +1361,23 @@
         }
       }
     },
+    "Microphone test": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone test"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "麦克风测试"
+          }
+        }
+      }
+    },
     "Microphone unavailable: %@": {
       "extractionState": "manual",
       "localizations": {
@@ -1820,6 +1888,23 @@
         }
       }
     },
+    "Requesting microphone access…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requesting microphone access…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在请求麦克风权限…"
+          }
+        }
+      }
+    },
     "Reset playback": {
       "extractionState": "manual",
       "localizations": {
@@ -2194,6 +2279,23 @@
         }
       }
     },
+    "Start test": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start test"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开始测试"
+          }
+        }
+      }
+    },
     "Stereo balance": {
       "extractionState": "manual",
       "localizations": {
@@ -2207,6 +2309,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "左右声像"
+          }
+        }
+      }
+    },
+    "Stop test": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop test"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止测试"
           }
         }
       }
@@ -2462,6 +2581,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "语音处理不可用，已切换到普通麦克风输入。"
+          }
+        }
+      }
+    },
+    "Waiting for input…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for input…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待输入…"
           }
         }
       }

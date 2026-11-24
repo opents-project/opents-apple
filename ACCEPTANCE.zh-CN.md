@@ -1,6 +1,6 @@
 # OpenTS 功能验收
 
-2026-11-24。Apple 构建覆盖 Apple Silicon macOS 和 arm64 iOS 模拟器。构建成功、客户端自身测试、与官方 TS3 客户端互通分别记录。缺少双端观察或涉及真实音频设备时，保留待验状态。
+2026-11-25。Apple 构建覆盖 Apple Silicon macOS 和 arm64 iOS 模拟器。构建成功、客户端自身测试、与官方 TS3 客户端互通分别记录。缺少双端观察或涉及真实音频设备时，保留待验状态。
 
 | 功能 | 实现 | Apple 构建 | 已完成的测试 | 与官方 TS3 客户端对照或互通 |
 | --- | --- | --- | --- | --- |
@@ -13,6 +13,7 @@
 | 按键说话 | 已实现窗口内按住发送、释放停止 | 通过 | 麦克风关闭时按住不会进入讲话状态 | 真实麦克风、首尾音节、远端发言指示待验；远端实际收到后台快捷键发言待验 |
 | macOS 全局按键说话 | 可在音频菜单启用 ⌥⇧空格 | 通过 | 后台测试进程收到系统按下和释放；验证冲突、注销、过期事件丢弃和重新注册 | 实际通话待验 |
 | 本地书签 | 添加、修改、删除及回填连接表单 | 通过 | 独立偏好域跨三个进程验证多条书签写入、修改和读取；窗口自动化超时 | Mac 和 iOS 交互待验 |
+| 本机麦克风测试 | 连接页手动启停，显示实际输入名称及 RMS 电平；复用通话输入格式与语音处理回退，macOS 优先使用已选输入。关闭页面或进入后台会停止。测试音频只在内存中用于测量 | 通过 | 独立 Swift 测试用合成 PCM 核对静音、−20 dBFS、单侧满幅和双侧满幅；模拟输入覆盖拒绝授权、等待时取消、启动失败、中断、重复启停及旧回调隔离 | 麦克风授权界面、真实设备读数、USB/蓝牙路由切换、iPhone 中断和硬件占用释放待验 |
 | 阈值语音激活 | 可调阈值、实时电平、240 ms 尾音 | 通过 | 合成 PCM 实测低于阈值不发送、超阈值发送、尾音后关闭、调节及静音 | 真实人声和官方客户端双向听音待验 |
 | 输出与静音 | 已接入 AVAudioEngine | 通过 | Mac 默认输出引擎启动、静音、恢复通过；硬件可用和用户静音独立上报；解码队列静音后输出为零 | 菜单操作、官方客户端静音标记待验 |
 | 逐用户播放控制 | 展开其他成员，可调音量 0–200%、左右声像、本地静音与复位；默认 100% 居中 | 通过 | 合成双声道 PCM 验证居中不变、左右和增益；两路合成 Opus 验证静音不改变另一人的样本、限幅、重连/切服后旧音频与设置隔离 | 真实多人通话、耳机听感、界面操作和 iOS 真机待验 |
@@ -42,7 +43,7 @@
 
 文件离线检查：运行 `swiftc -D DEBUG Apple/OfflineFiles.swift tests/OfflineFilesCheck.swift -o /tmp/opents-files-check && /tmp/opents-files-check`。模拟路径以频道根目录为起点，目录项、进度与错误均来自内存。
 
-Apple 采集切换离线检查可在生成绑定后运行 `swiftc -I build/headers -L core/target/debug -lopents_core Apple/Generated/opents_core.swift Apple/TalkHotKey.swift Apple/MacAudioDevices.swift Apple/VoiceAudio.swift tests/ChannelCaptureCheck.swift -o /tmp/opents-channel-capture-check && /tmp/opents-channel-capture-check`。
+Apple 采集切换离线检查可运行 `swiftc Apple/MicrophoneCapture.swift tests/ChannelCaptureCheck.swift -o /tmp/opents-channel-capture-check && /tmp/opents-channel-capture-check`。本机麦克风测试的离线检查可运行 `swiftc Apple/MicrophoneCapture.swift Apple/MacAudioDevices.swift Apple/MicrophoneTest.swift tests/MicrophoneTestCheck.swift -o /tmp/opents-mic-check && /tmp/opents-mic-check`。两项检查只使用进程内的合成输入。
 
 macOS 设备选择离线检查可运行 `swiftc Apple/MacAudioDevices.swift tests/MacAudioDevicesCheck.swift -o /tmp/opents-device-selection && /tmp/opents-device-selection`。该检查使用合成设备和独立的临时偏好域。
 

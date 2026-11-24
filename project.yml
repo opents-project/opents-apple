@@ -5,7 +5,7 @@ options:
     iOS: "17.0"
 settings:
   base:
-    INFOPLIST_KEY_NSMicrophoneUsageDescription: "Use your microphone to speak in the connected TeamSpeak channel."
+    INFOPLIST_KEY_NSMicrophoneUsageDescription: "Use your microphone to test the input level or speak in a TeamSpeak channel."
     GENERATE_INFOPLIST_FILE: YES
     SWIFT_VERSION: 5.0
     MARKETING_VERSION: 0.1.0
