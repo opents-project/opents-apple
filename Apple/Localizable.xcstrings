@@ -290,19 +290,19 @@
         }
       }
     },
-    "Buffers awaiting playback callback": {
+    "Buffers awaiting player consumption": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Buffers awaiting playback callback"
+            "value": "Buffers awaiting player consumption"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "等待播放完成回调的块数"
+            "value": "等待播放器取走的音频块数"
           }
         }
       }
@@ -919,6 +919,23 @@
         }
       }
     },
+    "Device sample rate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device sample rate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设备采样率"
+          }
+        }
+      }
+    },
     "Disconnect": {
       "extractionState": "manual",
       "localizations": {
@@ -1187,6 +1204,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "按住说话"
+          }
+        }
+      }
+    },
+    "I/O buffer / output latency": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I/O buffer / output latency"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入输出缓冲时长 / 输出延迟"
           }
         }
       }
@@ -1816,6 +1850,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "输出设备"
+          }
+        }
+      }
+    },
+    "Output route": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Output route"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输出路由"
           }
         }
       }

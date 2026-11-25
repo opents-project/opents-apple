@@ -53,5 +53,40 @@ enum PlaybackQueueCheck {
         precondition(audible == [true, true, true, false, false, true, true, true], "Unexpected offline PCM: \(audible)")
         print("PASS: real offline player rendered 60 ms of tone, 40 ms of silence, then tone after refilling three buffers")
         print("PASS: modeled 75 ms refill delay, queue empty for 35 ms; prompt refills never drained")
+
+        // Render the production pump's interleaved PCM, keeping old callbacks
+        // alive across stop to check that they cannot pull a later frame.
+        player.stop()
+        let source = TestFrames()
+        let pump = VoicePlaybackPump(player: player, format: format, meter: PlaybackQueueMeter()) {
+            source.next()
+        }
+        pump.start()
+        pump.stop()
+        let countAtStop = source.count
+        precondition(countAtStop >= 3)
+        for _ in 0..<3 {
+            let status = try engine.renderOffline(960, to: output)
+            precondition(status == .success && output.frameLength == 960)
+            let channels = output.floatChannelData!
+            precondition(abs(channels[0][480] - 0.25) < 0.001)
+            precondition(abs(channels[1][480] + 0.5) < 0.001)
+        }
+        player.stop()
+        // Stop synchronizes with work already enqueued by completion handlers.
+        pump.stop()
+        precondition(source.count == countAtStop)
+        print("PASS: production pump preserves stereo and stops pulling PCM on teardown")
+    }
+}
+
+private final class TestFrames: @unchecked Sendable {
+    private let lock = NSLock()
+    private var pulls = 0
+    var count: Int { lock.withLock { pulls } }
+
+    func next() -> [Float] {
+        lock.withLock { pulls += 1 }
+        return (0..<1920).map { $0.isMultiple(of: 2) ? 0.25 : -0.5 }
     }
 }

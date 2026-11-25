@@ -1,6 +1,6 @@
 import Foundation
 
-/// Counts buffers scheduled but not yet acknowledged by dataPlayedBack.
+/// Counts buffers scheduled but not yet acknowledged by the player callback.
 /// These are callback observations, not HAL underrun notifications.
 final class PlaybackQueueMeter: @unchecked Sendable {
     struct Reading {

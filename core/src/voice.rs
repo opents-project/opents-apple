@@ -497,6 +497,67 @@ mod tests {
     }
 
     #[test]
+    fn receive_tone_is_stable_for_uniform_and_three_packet_bursts() {
+        // This is a deterministic offline comparison: each case receives the same
+        // ordered Opus stream and renders one frame per packet. It does not model
+        // wall-clock network jitter or a real 20 ms audio callback.
+        fn measure(batch: u16) -> (f64, usize, usize, VoiceDiagnostics) {
+            const FRAMES: u16 = 660;
+            const WARMUP: u16 = 60;
+            let io = Voice::pair();
+            io.voice.set_devices(false, true, false, false);
+            let enc = encoder().unwrap();
+            let mut crossings = 0;
+            let mut previous = 0.0;
+            let mut silent_frames = 0;
+            let mut clipped_samples = 0;
+            for first in (0..FRAMES).step_by(usize::from(batch)) {
+                for id in first..first + batch {
+                    deliver(&io.voice, tone_packet(&enc, id, 7, 1_000.0), 10);
+                }
+                for id in first..first + batch {
+                    let frame = io.voice.playback_frame();
+                    if id < WARMUP {
+                        continue;
+                    }
+                    let mut power = 0.0;
+                    for &sample in frame.iter().step_by(2) {
+                        power += f64::from(sample).powi(2);
+                        crossings += usize::from(previous < 0.0 && sample >= 0.0);
+                        previous = sample;
+                        clipped_samples += usize::from(sample.abs() >= 0.999);
+                    }
+                    silent_frames += usize::from((power / FRAME as f64).sqrt() < 0.001);
+                }
+            }
+            let seconds = f64::from(FRAMES - WARMUP) * FRAME as f64 / 48_000.0;
+            (
+                crossings as f64 / seconds,
+                silent_frames,
+                clipped_samples,
+                io.voice.diagnostics(),
+            )
+        }
+
+        let uniform = measure(1);
+        let burst = measure(3);
+        for (label, (hz, silent, clipped, stats)) in
+            [("uniform", uniform), ("three-packet burst", burst)]
+        {
+            eprintln!(
+                "{label}: {hz:.2} Hz, {silent} silent frames, {clipped} clipped samples, {} received packets, {} missing slots, {} late packets",
+                stats.rx_packets, stats.rx_gap_slots, stats.rx_late
+            );
+            assert!((999.0..=1_001.0).contains(&hz), "{label}: {hz:.2} Hz");
+            assert_eq!(silent, 0, "{label}: silent frames");
+            assert_eq!(clipped, 0, "{label}: clipped samples");
+            assert_eq!(stats.rx_packets, 660, "{label}: packet count");
+            assert_eq!(stats.rx_gap_slots, 0, "{label}: missing slots");
+            assert_eq!(stats.rx_late, 0, "{label}: late packets");
+        }
+    }
+
+    #[test]
     fn full_capture_queue_counts_only_eligible_frames() {
         let mut io = Voice::pair();
         io.set_channel(Some((1, CodecType::OpusVoice))).unwrap();

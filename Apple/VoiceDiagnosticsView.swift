@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import AVFAudio
+#endif
 
 struct VoiceDiagnosticsView: View {
     @ObservedObject var audio: VoiceAudio
@@ -10,7 +13,13 @@ struct VoiceDiagnosticsView: View {
                 let queue = audio.playbackMeter.snapshot()
                 Form {
                     Section("Local playback · current audio engine") {
-                        LabeledContent("Buffers awaiting playback callback", value: String(queue.pending))
+                        #if os(iOS)
+                        let session = AVAudioSession.sharedInstance()
+                        LabeledContent("Output route", value: session.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ", "))
+                        LabeledContent("Device sample rate", value: "\(Int(session.sampleRate.rounded())) Hz")
+                        LabeledContent("I/O buffer / output latency", value: "\(Int((session.ioBufferDuration * 1000).rounded())) / \(Int((session.outputLatency * 1000).rounded())) ms")
+                        #endif
+                        LabeledContent("Buffers awaiting player consumption", value: String(queue.pending))
                         LabeledContent("Playback queue drained", value: String(queue.drained))
                         LabeledContent("Longest empty interval", value: "\(queue.maxEmptyMs) ms")
                         LabeledContent("Longest callback to refill", value: "\(queue.maxRefillMs) ms")

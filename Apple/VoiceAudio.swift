@@ -16,6 +16,7 @@ final class VoiceAudio: ObservableObject {
     @Published private(set) var voice: Voice?
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
+    private var playbackPump: VoicePlaybackPump?
     private(set) var playbackMeter = PlaybackQueueMeter()
     private var observer: NSObjectProtocol?
     private var installedTap = false
@@ -148,6 +149,8 @@ final class VoiceAudio: ObservableObject {
         if installedTap { engine?.inputNode.removeTap(onBus: 0) }
         installedTap = false
         let previous = player
+        playbackPump?.stop()
+        playbackPump = nil
         player = nil
         playbackMeter = PlaybackQueueMeter()
         engine?.stop()
@@ -234,34 +237,16 @@ final class VoiceAudio: ObservableObject {
         microphone = mic
         output = play
         player.volume = play ? 1 : 0
-        for _ in 0..<3 { schedule(player, voice: voice) }
-        player.play()
+        let pump = VoicePlaybackPump(player: player, format: stereo, meter: playbackMeter) {
+            voice.playbackFrame()
+        }
+        playbackPump = pump
+        pump.start()
         publishDevices()
         observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self, weak engine] _ in
             Task { @MainActor in
                 guard let self, let engine, self.engine === engine else { return }
                 self.configure(mic: self.microphone, play: self.output)
-            }
-        }
-    }
-
-    private func schedule(_ node: AVAudioPlayerNode, voice: Voice, completion: UInt64? = nil) {
-        guard node === player,
-              let buffer = AVAudioPCMBuffer(pcmFormat: stereo, frameCapacity: 960),
-              let channels = buffer.floatChannelData else { return }
-        let samples = voice.playbackFrame()
-        for i in 0..<960 {
-            channels[0][i] = samples[2 * i]
-            channels[1][i] = samples[2 * i + 1]
-        }
-        buffer.frameLength = 960
-        let meter = playbackMeter
-        meter.scheduled(refilling: completion)
-        node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self, weak node] _ in
-            let completed = meter.completed()
-            Task { @MainActor in
-                guard let self, let node else { return }
-                self.schedule(node, voice: voice, completion: completed)
             }
         }
     }
