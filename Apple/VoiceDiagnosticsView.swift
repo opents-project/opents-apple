@@ -29,6 +29,8 @@ struct VoiceDiagnosticsView: View {
                             LabeledContent("Received audio packets", value: String(stats.rxPackets))
                             LabeledContent("Sequence gaps / later filled", value: "\(stats.rxGapSlots) / \(stats.rxGapFills)")
                             LabeledContent("Late / other rejected packets", value: "\(stats.rxLate) / \(stats.rxOtherRejected)")
+                            LabeledContent("Opus concealment / FEC", value: "\(stats.rxConcealedFrames / 48) ms")
+                            LabeledContent("Backlog removed during recovery", value: "\(stats.rxRecoveredFrames / 48) ms")
                             LabeledContent("Longest interval during speech", value: "\(stats.rxLongestIntervalMs) ms")
                         }
                         Section("Outgoing voice · current connection") {

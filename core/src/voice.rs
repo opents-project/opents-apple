@@ -1,17 +1,15 @@
 //! The wire uses Opus. The Apple adapter supplies mono or stereo 48 kHz PCM in 20 ms
 //! frames and pulls interleaved stereo PCM from the per-speaker jitter buffers.
+use crate::receive_audio::{ReceiveError, Talker};
 use audiopus::{coder::Encoder, Application, Channels, SampleRate};
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
 };
 use std::time::Instant;
 use tokio::sync::{mpsc, watch};
-use tsclientlib::{
-    audio::{AudioHandler, Error as AudioError},
-    ClientId,
-};
+use tsclientlib::ClientId;
 use tsproto_packets::packets::{AudioData, CodecType, InAudioBuf, OutAudio, OutPacket};
 
 pub const FRAME: usize = 960;
@@ -70,6 +68,8 @@ pub struct VoiceDiagnostics {
     pub rx_late: u64,
     pub rx_other_rejected: u64,
     pub rx_longest_interval_ms: u64,
+    pub rx_concealed_frames: u64,
+    pub rx_recovered_frames: u64,
     pub tx_enqueued: u64,
     pub tx_full: u64,
     pub tx_sent: u64,
@@ -93,7 +93,7 @@ impl Arrival {
         if forward > 0 && forward < 0x8000 {
             stats.rx_gap_slots += u64::from(forward - 1);
             if forward > 1 || !self.missing.is_empty() {
-                // Upstream accepts at most 50 packets ahead of its playhead.
+                // The receive queue accepts at most 50 packets ahead of its playhead.
                 // Keep a little more history for reporting a rejected late fill.
                 const WINDOW: u16 = 64;
                 self.missing.retain(|slot| id.wrapping_sub(*slot) <= WINDOW);
@@ -117,7 +117,7 @@ impl Arrival {
 #[derive(Default)]
 struct Playback {
     // Transport IDs distinguish simultaneous connections using one TS identity.
-    streams: AudioHandler<(ClientId, u64)>,
+    streams: HashMap<(ClientId, u64), Talker>,
     controls: HashMap<u64, SpeakerMix>,
     arrivals: HashMap<(ClientId, u64), Arrival>,
     stats: VoiceDiagnostics,
@@ -126,24 +126,23 @@ struct Playback {
 impl Playback {
     fn render(&mut self) -> Vec<f32> {
         let mut output = vec![0.0; FRAME * 2];
-        let ended = if self.controls.is_empty() {
-            self.streams.fill_buffer(&mut output)
-        } else {
-            // The upstream processor exposes each decoded stream before its normal sum.
-            // Advance every jitter buffer once, including muted speakers.
-            let mut scratch = [0.0; FRAME * 2];
-            self.streams
-                .fill_buffer_with_proc(&mut scratch, |(_, db_id), samples| {
-                    self.controls
-                        .get(db_id)
-                        .copied()
-                        .unwrap_or_default()
-                        .add_to(samples, &mut output);
-                })
-        };
-        for source in ended {
-            self.arrivals.remove(&source);
-        }
+        let mut samples = [0.0; FRAME * 2];
+        self.streams.retain(|source, talker| {
+            let rendered = talker.render(&mut samples);
+            self.stats.rx_concealed_frames += rendered.concealed_frames as u64;
+            self.stats.rx_recovered_frames += rendered.recovered_frames as u64;
+            self.controls
+                .get(&source.1)
+                .copied()
+                .unwrap_or_default()
+                .add_to(&samples[..rendered.samples], &mut output);
+            if talker.finished() {
+                self.arrivals.remove(source);
+                false
+            } else {
+                true
+            }
+        });
         for sample in &mut output {
             *sample = sample.clamp(-1.0, 1.0);
         }
@@ -260,7 +259,15 @@ impl Voice {
         let end = packet.data().data().data().len() <= 1;
         let now = Instant::now();
         let playback = &mut *playback;
-        let result = playback.streams.handle_packet(source, packet);
+        let result = match playback.streams.entry(source) {
+            Entry::Occupied(mut entry) => entry.get_mut().push(packet),
+            Entry::Vacant(_) if end => Ok(()),
+            Entry::Vacant(entry) => Talker::new(id).and_then(|mut talker| {
+                talker.push(packet)?;
+                entry.insert(talker);
+                Ok(())
+            }),
+        };
         if !end {
             playback.stats.rx_packets += 1;
         }
@@ -282,7 +289,7 @@ impl Voice {
                     );
                 }
             }
-            Err(AudioError::TooLate { wanted, got }) if (got.wrapping_sub(wanted) as i16) < 0 => {
+            Err(ReceiveError::Late) => {
                 playback.stats.rx_late += 1;
                 if !end {
                     if let Some(arrival) = playback.arrivals.get_mut(&source) {
@@ -310,7 +317,7 @@ impl Voice {
         });
         if !output || output_muted {
             let mut playback = self.playback.lock().unwrap();
-            playback.streams.reset();
+            playback.streams.clear();
             playback.arrivals.clear();
         }
     }
@@ -452,6 +459,57 @@ mod tests {
         voice.receive(InAudioBuf::try_new(Direction::S2C, packet).unwrap(), db_id)
     }
 
+    fn channel_rms(frame: &[f32], channel: usize) -> f64 {
+        let mut power = 0.0_f64;
+        let mut count = 0;
+        for &sample in frame.iter().skip(channel).step_by(2) {
+            power += f64::from(sample).powi(2);
+            count += 1;
+        }
+        (power / count as f64).sqrt()
+    }
+
+    fn measured_frequency(frames: &[Vec<f32>], channel: usize) -> f64 {
+        let mut crossings = 0usize;
+        let mut previous = frames[0][channel];
+        for frame in frames {
+            for &sample in frame.iter().skip(channel).step_by(2) {
+                if previous < 0.0 && sample >= 0.0 {
+                    crossings += 1;
+                }
+                previous = sample;
+            }
+        }
+        crossings as f64 * 48_000.0 / (frames.len() * FRAME) as f64
+    }
+
+    fn marker_onset(frames: &[Vec<f32>], channel: usize, from_tick: usize) -> usize {
+        const WINDOW: usize = 240; // 5 ms, below the 10 ms phase-period tolerance.
+        const STEP: usize = 24;
+        let samples: Vec<_> = frames
+            .iter()
+            .flat_map(|frame| frame.iter().skip(channel).step_by(2).copied())
+            .collect();
+        let search_start = from_tick * FRAME - 10 * FRAME;
+        let search_end = (from_tick + 10) * FRAME;
+        let mut start = search_start;
+        while start + WINDOW <= search_end {
+            let mut re = 0.0_f64;
+            let mut im = 0.0_f64;
+            for (i, &sample) in samples[start..start + WINDOW].iter().enumerate() {
+                let phase = i as f64 * std::f64::consts::TAU * 2_000.0 / 48_000.0;
+                re += f64::from(sample) * phase.cos();
+                im += f64::from(sample) * phase.sin();
+            }
+            let strength = 2.0 * re.hypot(im) / WINDOW as f64;
+            if strength > 0.2 {
+                return start;
+            }
+            start += STEP;
+        }
+        panic!("2 kHz marker not found near tick {from_tick}")
+    }
+
     #[test]
     fn arrival_diagnostics_distinguish_reordering_missing_and_late_packets() {
         let io = Voice::pair();
@@ -494,6 +552,116 @@ mod tests {
         io.voice.set_devices(false, true, false, false);
         deliver(&io.voice, tone_packet(&enc, 220, 7, 440.0), 10);
         assert_eq!(io.voice.diagnostics().rx_gap_slots, 3);
+    }
+
+    #[test]
+    fn receive_recovers_after_two_missing_ticks_without_delaying_other_speaker() {
+        const TICKS: u16 = 250; // 5 s at 20 ms per playback tick.
+        const MARKER_TICK: u16 = 200;
+        const LONG_GAP_TICK: u16 = 220;
+        let normal = Voice::pair();
+        let delayed = Voice::pair();
+        for voice in [&normal.voice, &delayed.voice] {
+            voice.set_devices(false, true, false, false);
+            voice.set_speaker_mix(
+                10,
+                SpeakerMix {
+                    pan: -1.0,
+                    ..Default::default()
+                },
+            );
+            voice.set_speaker_mix(
+                11,
+                SpeakerMix {
+                    pan: 1.0,
+                    ..Default::default()
+                },
+            );
+        }
+        let (a, b) = (encoder().unwrap(), encoder().unwrap());
+        let mut held = [None, None];
+        let mut normal_frames = Vec::with_capacity(usize::from(TICKS));
+        let mut delayed_frames = Vec::with_capacity(usize::from(TICKS));
+        let mut short_gap_nonzero = 0;
+        let mut prolonged_nonzero = 0;
+        let mut recovered_ms = Vec::new();
+
+        for id in 0..TICKS {
+            let hz = if id == MARKER_TICK { 2_000.0 } else { 440.0 };
+            let delayed_a_packet = tone_packet(&a, id, 7, hz);
+            let b_packet = tone_packet(&b, id, 8, hz);
+            deliver(&normal.voice, delayed_a_packet.clone(), 10);
+            deliver(&normal.voice, b_packet.clone(), 11);
+            deliver(&delayed.voice, b_packet, 11);
+
+            match id {
+                40 | 41 => held[usize::from(id - 40)] = Some(delayed_a_packet),
+                42 => {
+                    deliver(&delayed.voice, held[0].take().unwrap(), 10);
+                    deliver(&delayed.voice, held[1].take().unwrap(), 10);
+                    deliver(&delayed.voice, delayed_a_packet, 10);
+                }
+                LONG_GAP_TICK.. => {}
+                _ => deliver(&delayed.voice, delayed_a_packet, 10),
+            }
+
+            normal_frames.push(normal.voice.playback_frame());
+            let delayed_frame = delayed.voice.playback_frame();
+            if (40..42).contains(&id) && channel_rms(&delayed_frame, 0) >= 0.001 {
+                short_gap_nonzero += 1;
+            }
+            if id >= LONG_GAP_TICK && channel_rms(&delayed_frame, 0) >= 0.001 {
+                prolonged_nonzero += 1;
+            }
+            assert!(delayed_frame.iter().skip(1).step_by(2).eq(normal_frames
+                .last()
+                .unwrap()
+                .iter()
+                .skip(1)
+                .step_by(2)));
+            if matches!(id, 42 | 67 | 92 | 142 | 199) {
+                recovered_ms.push(delayed.voice.diagnostics().rx_recovered_frames as f64 / 48.0);
+            }
+            delayed_frames.push(delayed_frame);
+        }
+
+        let normal_a_marker = marker_onset(&normal_frames, 0, usize::from(MARKER_TICK));
+        let normal_b_marker = marker_onset(&normal_frames, 1, usize::from(MARKER_TICK));
+        let delayed_a_marker = marker_onset(&delayed_frames, 0, usize::from(MARKER_TICK));
+        let delayed_b_marker = marker_onset(&delayed_frames, 1, usize::from(MARKER_TICK));
+        let baseline_skew = normal_a_marker as isize - normal_b_marker as isize;
+        let recovered_skew = delayed_a_marker as isize - delayed_b_marker as isize;
+        let recovery_delay_samples = recovered_skew - baseline_skew;
+        let recovered_hz = measured_frequency(&delayed_frames[60..190], 0);
+        let other_hz = measured_frequency(&delayed_frames[60..190], 1);
+        let prolonged_tail_silent = delayed_frames[240..]
+            .iter()
+            .all(|frame| channel_rms(frame, 0) < 0.001);
+        let other_marker_shift = delayed_b_marker as isize - normal_b_marker as isize;
+
+        eprintln!(
+            "gap PLC={short_gap_nonzero}/2 frames, marker recovery delay={recovery_delay_samples} samples ({:.2} ms), other marker shift={other_marker_shift} samples, recovered={recovered_hz:.2} Hz, other={other_hz:.2} Hz, long-gap nonzero={prolonged_nonzero}/30, final silence={prolonged_tail_silent}",
+            recovery_delay_samples as f64 * 1000.0 / 48_000.0
+        );
+        eprintln!("Recovered ms at 0, 0.5, 1, 2 and 3.14 seconds: {recovered_ms:?}");
+        assert_eq!(short_gap_nonzero, 2);
+        assert_eq!(recovered_ms[0], 0.0);
+        assert!(recovered_ms.windows(2).all(|step| step[0] <= step[1]));
+        assert!(0.0 < recovered_ms[2] && recovered_ms[2] < recovered_ms[3]);
+        assert!((30.0..=40.0).contains(&recovered_ms[4]));
+        assert_eq!(normal.voice.diagnostics().rx_recovered_frames, 0);
+        assert!(recovery_delay_samples.abs() <= 480);
+        assert!(
+            other_marker_shift.abs() <= 480,
+            "other stream marker shifted by {other_marker_shift} samples"
+        );
+        assert!(
+            (430.0..=450.0).contains(&recovered_hz),
+            "{recovered_hz:.2} Hz"
+        );
+        assert!((430.0..=450.0).contains(&other_hz), "{other_hz:.2} Hz");
+        assert!(prolonged_nonzero > 0 && prolonged_nonzero < 30);
+        assert!(prolonged_tail_silent);
     }
 
     #[test]

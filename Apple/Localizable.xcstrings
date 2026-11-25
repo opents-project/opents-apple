@@ -222,6 +222,23 @@
         }
       }
     },
+    "Backlog removed during recovery": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backlog removed during recovery"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "平滑追回的积压时长"
+          }
+        }
+      }
+    },
     "Bookmark": {
       "extractionState": "manual",
       "localizations": {
@@ -1816,6 +1833,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法读取或保存 OpenTS 身份（钥匙串）：%@"
+          }
+        }
+      }
+    },
+    "Opus concealment / FEC": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opus concealment / FEC"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opus 丢包补偿 / 前向纠错时长"
           }
         }
       }

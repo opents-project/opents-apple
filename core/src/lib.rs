@@ -6,6 +6,7 @@ pub use permissions::{
     EffectivePermission, GroupKind, ListedGroup, PermissionAssignment, PermissionOverview,
     PermissionSource,
 };
+mod receive_audio;
 mod voice;
 pub use chat::{ChatLine, ChatScope};
 use futures::StreamExt;
