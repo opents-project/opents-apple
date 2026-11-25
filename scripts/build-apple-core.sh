@@ -2,6 +2,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 root="$PWD"
+platforms=(aarch64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim)
+profile=dev
+products=debug
+if [[ "${1:-}" == "--macos-release" ]]; then
+  platforms=(aarch64-apple-darwin)
+  profile=release
+  products=release
+fi
 out="$root/build"
 gen="$root/Apple/Generated"
 mkdir -p "$out" "$gen" "$out/headers"
@@ -15,9 +23,9 @@ target/debug/bindgen generate --library target/debug/libopents_core.dylib --lang
 cp "$gen/opents_coreFFI.h" "$out/headers/"
 cp "$gen/opents_coreFFI.modulemap" "$out/headers/module.modulemap"
 args=()
-for platform in aarch64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim; do
-  rustup run stable cargo build --locked --lib --target "$platform"
-  args+=(-library "$PWD/target/$platform/debug/libopents_core.a" -headers "$out/headers")
+for platform in "${platforms[@]}"; do
+  rustup run stable cargo build --locked --lib --profile "$profile" --target "$platform"
+  args+=(-library "$PWD/target/$platform/$products/libopents_core.a" -headers "$out/headers")
 done
 staging="$(mktemp -d "$out/xcframework.XXXXXX")"
 xcodebuild -create-xcframework "${args[@]}" -output "$staging/OpenTSCore.xcframework"

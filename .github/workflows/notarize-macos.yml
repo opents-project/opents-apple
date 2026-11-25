@@ -1,0 +1,92 @@
+name: Notarize macOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Apple/**'
+      - 'core/**'
+      - 'project.yml'
+      - 'scripts/build-apple-core.sh'
+      - '.github/workflows/notarize-macos.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare build tools
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add --toolchain stable aarch64-apple-darwin
+          command -v xcodegen || brew install xcodegen
+      - name: Build macOS Release
+        run: |
+          ./scripts/build-apple-core.sh --macos-release
+          xcodebuild -quiet -project OpenTS.xcodeproj -scheme OpenTS-macOS \
+            -configuration Release -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath build/ReleaseBuild ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
+          ditto -c -k --keepParent build/ReleaseBuild/Build/Products/Release/OpenTS.app "$RUNNER_TEMP/unsigned.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-macos-arm64
+          path: ${{ runner.temp }}/unsigned.zip
+          retention-days: 1
+
+  notarize:
+    needs: build
+    runs-on: macos-26
+    environment: Build
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-macos-arm64
+          path: ${{ runner.temp }}
+      - name: Sign, notarize and verify
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_SIGNING_TEAM_ID: ${{ vars.APPLE_SIGNING_TEAM_ID }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          cd "$RUNNER_TEMP"
+          ditto -x -k unsigned.zip "$RUNNER_TEMP"
+          keychain="$RUNNER_TEMP/opents.keychain-db"
+          password="$(openssl rand -hex 32)"
+          trap 'rm -f signing.p12; security delete-keychain "$keychain" >/dev/null 2>&1 || true' EXIT
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$APPLE_CERTIFICATE_P12_BASE64" | base64 -D > signing.p12
+          security import signing.p12 -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm signing.p12
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          codesign --force --options runtime --timestamp --keychain "$keychain" --sign "$APPLE_SIGNING_IDENTITY" OpenTS.app
+          codesign --verify --deep --strict OpenTS.app
+          ditto -c -k --keepParent OpenTS.app submit.zip
+          xcrun notarytool submit submit.zip --apple-id "$NOTARY_APPLE_ID" \
+            --password "$NOTARY_APP_PASSWORD" --team-id "$APPLE_SIGNING_TEAM_ID" --wait --output-format json > result.json
+          jq '{id,status}' result.json
+          jq -e '.status == "Accepted"' result.json >/dev/null
+          xcrun stapler staple OpenTS.app
+          xcrun stapler validate OpenTS.app
+          spctl --assess --type execute --verbose=2 OpenTS.app
+          ditto -c -k --sequesterRsrc --keepParent OpenTS.app OpenTS-macOS-arm64.zip
+          shasum -a 256 OpenTS-macOS-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenTS-macOS-arm64-notarized
+          path: ${{ runner.temp }}/OpenTS-macOS-arm64.zip
+          if-no-files-found: error
