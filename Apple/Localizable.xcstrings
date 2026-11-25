@@ -18,6 +18,23 @@
         }
       }
     },
+    "%@, packet loss %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, packet loss %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@，丢包 %@"
+          }
+        }
+      }
+    },
     "Access denied": {
       "extractionState": "manual",
       "localizations": {
@@ -1293,6 +1310,23 @@
         }
       }
     },
+    "Incoming packet loss": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incoming packet loss"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下行丢包率"
+          }
+        }
+      }
+    },
     "Incoming voice · current connection": {
       "extractionState": "manual",
       "localizations": {
@@ -1497,6 +1531,23 @@
         }
       }
     },
+    "Loss %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loss %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "丢包 %@"
+          }
+        }
+      }
+    },
     "Member count unavailable": {
       "extractionState": "manual",
       "localizations": {
@@ -1663,6 +1714,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "我的身份"
+          }
+        }
+      }
+    },
+    "My connection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我的连接"
           }
         }
       }
@@ -1990,6 +2058,23 @@
         }
       }
     },
+    "Ping ± variation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ping ± variation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "往返延迟 ± 波动"
+          }
+        }
+      }
+    },
     "Playback queue drained": {
       "extractionState": "manual",
       "localizations": {
@@ -2105,6 +2190,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "读取失败"
+          }
+        }
+      }
+    },
+    "Receive rate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receive rate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接收速率"
           }
         }
       }
@@ -2377,6 +2479,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "发送"
+          }
+        }
+      }
+    },
+    "Send rate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send rate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送速率"
           }
         }
       }

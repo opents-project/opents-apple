@@ -24,7 +24,7 @@ use tokio::sync::{mpsc, oneshot};
 use tsclientlib::prelude::*;
 use tsclientlib::{Connection, DisconnectOptions, InMessage, StreamItem};
 use tsproto_packets::packets::{AudioData, CodecType, OutAudio};
-pub use voice::{SpeakerMix, Voice, VoiceDiagnostics};
+pub use voice::{ConnectionQuality, SpeakerMix, Voice, VoiceDiagnostics};
 
 uniffi::setup_scaffolding!();
 
@@ -411,6 +411,12 @@ async fn run(
                     .server
                     .set_subscribed(true);
                 subscription.send(&mut con).map_err(|e| e.to_string())?;
+            }
+            StreamItem::NetworkStatsUpdated => {
+                if let Ok(stats) = con.get_network_stats() {
+                    io.voice.update_quality(stats);
+                }
+                continue;
             }
             StreamItem::Audio(packet) => {
                 let from = match packet.data().data() {

@@ -150,8 +150,18 @@ impl Playback {
     }
 }
 
+#[derive(Clone, Copy, uniffi::Record)]
+pub struct ConnectionQuality {
+    pub ping_ms: Option<f64>,
+    pub deviation_ms: f64,
+    pub incoming_loss: Option<f32>,
+    pub incoming_bytes_per_second: u64,
+    pub outgoing_bytes_per_second: u64,
+}
+
 #[derive(uniffi::Object)]
 pub struct Voice {
+    quality: Mutex<Option<(Instant, ConnectionQuality)>>,
     capture: mpsc::Sender<CapturedFrame>,
     capture_epoch: AtomicU64,
     tx_enqueued: AtomicU64,
@@ -234,6 +244,7 @@ impl Voice {
             enabled: changes,
             voice: Arc::new(Self {
                 capture,
+                quality: Mutex::default(),
                 capture_epoch: AtomicU64::new(0),
                 tx_enqueued: AtomicU64::new(0),
                 tx_full: AtomicU64::new(0),
@@ -242,6 +253,26 @@ impl Voice {
                 playback: Mutex::default(),
             }),
         }
+    }
+
+    pub(crate) fn update_quality(&self, stats: &tsclientlib::ConnectionStats) {
+        use tsclientlib::PacketStat::*;
+        let bytes = stats.get_last_second_bytes();
+        let sum = |types: [tsclientlib::PacketStat; 3]| {
+            types
+                .into_iter()
+                .map(|kind| u64::from(bytes[kind as usize]))
+                .sum::<u64>()
+        };
+        let incoming = sum([InSpeech, InKeepalive, InControl]);
+        let quality = ConnectionQuality {
+            ping_ms: (!stats.rtt.is_zero()).then(|| stats.rtt.as_secs_f64() * 1000.0),
+            deviation_ms: stats.rtt_dev.as_secs_f64() * 1000.0,
+            incoming_loss: (incoming > 0).then(|| stats.get_packetloss_s2c_total()),
+            incoming_bytes_per_second: incoming,
+            outgoing_bytes_per_second: sum([OutSpeech, OutKeepalive, OutControl]),
+        };
+        *self.quality.lock().unwrap() = Some((Instant::now(), quality));
     }
 
     pub(crate) fn receive(&self, packet: InAudioBuf, database_id: u64) {
@@ -348,6 +379,15 @@ impl Voice {
                 Err(mpsc::error::TrySendError::Closed(_)) => {}
             }
         }
+    }
+
+    pub fn connection_quality(&self) -> Option<ConnectionQuality> {
+        self.quality
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|(when, _)| when.elapsed().as_secs() < 3)
+            .map(|(_, quality)| *quality)
     }
 
     pub fn diagnostics(&self) -> VoiceDiagnostics {

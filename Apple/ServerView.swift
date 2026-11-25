@@ -113,8 +113,20 @@ struct ServerView: View {
                         }
                         LabeledContent("Channel type", value: NSLocalizedString(room.kind, comment: "Channel type"))
                         if room.subscribed || !room.members.isEmpty {
-                            Section("Visible members (\(room.members.count))") {
+                            Section {
                                 MemberPlaybackList(members: room.memberDetails, audio: model.audio)
+                            } header: {
+                                ViewThatFits(in: .horizontal) {
+                                    HStack {
+                                        Text("Visible members (\(room.members.count))")
+                                        Spacer(minLength: 8)
+                                        ConnectionQualityButton(audio: model.audio)
+                                    }
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Visible members (\(room.members.count))")
+                                        ConnectionQualityButton(audio: model.audio)
+                                    }
+                                }
                             }
                         }
                     }.formStyle(.grouped).navigationTitle(room.name)
@@ -198,6 +210,57 @@ private struct ChannelRows: View {
                         .help("Member count unavailable")
                 }
             }
+        }
+    }
+}
+
+private struct ConnectionQualityButton: View {
+    @ObservedObject var audio: VoiceAudio
+    @State private var showingDetails = false
+
+    private func ping(_ quality: ConnectionQuality?) -> String {
+        guard let quality, let ms = quality.pingMs else { return "—" }
+        return ms.formatted(.number.precision(.fractionLength(0))) + " ± "
+            + quality.deviationMs.formatted(.number.precision(.fractionLength(1))) + " ms"
+    }
+
+    private func loss(_ quality: ConnectionQuality?) -> String {
+        quality?.incomingLoss?.formatted(.percent.precision(.fractionLength(0...1))) ?? "—"
+    }
+
+    private func rate(_ count: UInt64?) -> String {
+        guard let count else { return "—" }
+        return ByteCountFormatter.string(fromByteCount: Int64(count), countStyle: .decimal) + "/s"
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let quality = audio.voice?.connectionQuality()
+            Button { showingDetails = true } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "network")
+                    Text(verbatim: ping(quality))
+                    Text("Loss \(loss(quality))")
+                }
+                .font(.caption).monospacedDigit().fixedSize()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("My connection"))
+            .accessibilityValue(Text("\(ping(quality)), packet loss \(loss(quality))"))
+        }
+        .popover(isPresented: $showingDetails) {
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                let quality = audio.voice?.connectionQuality()
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("My connection").font(.headline)
+                    LabeledContent("Ping ± variation", value: ping(quality))
+                    LabeledContent("Incoming packet loss", value: loss(quality))
+                    LabeledContent("Receive rate", value: rate(quality?.incomingBytesPerSecond))
+                    LabeledContent("Send rate", value: rate(quality?.outgoingBytesPerSecond))
+                }
+                .monospacedDigit().padding().frame(idealWidth: 300)
+            }
+            .presentationCompactAdaptation(.popover)
         }
     }
 }
