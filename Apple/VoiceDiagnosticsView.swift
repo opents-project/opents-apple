@@ -1,0 +1,41 @@
+import SwiftUI
+
+struct VoiceDiagnosticsView: View {
+    @ObservedObject var audio: VoiceAudio
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                let queue = audio.playbackMeter.snapshot()
+                Form {
+                    Section("Local playback · current audio engine") {
+                        LabeledContent("Buffers awaiting playback callback", value: String(queue.pending))
+                        LabeledContent("Playback queue drained", value: String(queue.drained))
+                        LabeledContent("Longest empty interval", value: "\(queue.maxEmptyMs) ms")
+                        LabeledContent("Longest callback to refill", value: "\(queue.maxRefillMs) ms")
+                    }
+                    if let stats = audio.voice?.diagnostics() {
+                        Section("Incoming voice · current connection") {
+                            LabeledContent("Received audio packets", value: String(stats.rxPackets))
+                            LabeledContent("Sequence gaps / later filled", value: "\(stats.rxGapSlots) / \(stats.rxGapFills)")
+                            LabeledContent("Late / other rejected packets", value: "\(stats.rxLate) / \(stats.rxOtherRejected)")
+                            LabeledContent("Longest interval during speech", value: "\(stats.rxLongestIntervalMs) ms")
+                        }
+                        Section("Outgoing voice · current connection") {
+                            LabeledContent("Capture frames queued / queue full", value: "\(stats.txEnqueued) / \(stats.txFull)")
+                            LabeledContent("Audio frames handed to transport", value: String(stats.txSent))
+                        }
+                    }
+                }
+                .formStyle(.grouped)
+                .monospacedDigit()
+            }
+            .navigationTitle("Voice diagnostics")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        #if os(macOS)
+        .frame(minWidth: 440, minHeight: 520)
+        #endif
+    }
+}

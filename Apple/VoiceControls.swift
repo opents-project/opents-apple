@@ -56,6 +56,7 @@ struct VoiceMenu: View {
 struct VoiceControls: View {
     @ObservedObject var audio: VoiceAudio
     @Environment(\.scenePhase) private var phase
+    @State private var showingDiagnostics = false
     var body: some View {
         VStack {
             if let message = audio.message { Text(message).font(.caption).foregroundStyle(audio.standardInput ? Color.secondary : Color.red) }
@@ -66,7 +67,12 @@ struct VoiceControls: View {
             }
             #endif
             HStack {
-                Menu("Audio", systemImage: "waveform") { VoiceMenu(audio: audio) }
+                Menu("Audio", systemImage: "waveform") {
+                    VoiceMenu(audio: audio)
+                    Divider()
+                    Button("Voice diagnostics") { showingDiagnostics = true }
+                }
+                .sheet(isPresented: $showingDiagnostics) { VoiceDiagnosticsView(audio: audio) }
                 Spacer()
                 if audio.microphone && audio.voiceActivated {
                     TimelineView(.periodic(from: .now, by: 0.1)) { _ in

@@ -51,3 +51,18 @@ macOS 设备选择离线检查可运行 `swiftc Apple/MacAudioDevices.swift test
 身份导入离线检查使用 `cargo test --locked --lib` 和 `swiftc -I build/headers -L core/target/debug -lopents_core Apple/Generated/opents_core.swift Apple/IdentityStore.swift tests/IdentityImportCheck.swift -o /tmp/opents-import-check && /tmp/opents-import-check`（Swift 命令从仓库根目录执行）。Swift 检查在内存中构造合成 INI，在随机命名的钥匙串服务下写入测试条目并在结束时清理。
 
 Apple TN3179 按流量路径界定本地网络。同一 Wi-Fi 或以太网链路上的服务器可直接到达，向该地址连接 UDP 套接字或发送 UDP 单播需要本地网络访问。发往经路由器转发的远端服务器的普通单播，即使目标使用私有地址，也不因该目的地址本身触发这项权限。直接单播无需声明 Bonjour 服务或申请多播 entitlement。模拟器只能用于检查包内容，权限行为须在真机验证。[Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)
+
+
+### iPhone 13 mini 回放问题
+
+安装版本为 `f68d93b`。用户反馈远端回放听感异常，异常方向和当时的队列状态待确认。诊断版本沿用 48 kHz、20 ms 帧、三块预排和原有主线程补帧路径。
+
+在「音频 → 语音诊断」中对照异常前后的计数，分别记录 iPhone 听对端及对端听 iPhone 两段单向发言。播放侧从当前引擎启动时开始计数；收发侧从当前连接的语音句柄建立时开始计数，重连会重置。
+
+| 观察位置 | 判读 |
+| --- | --- |
+| iPhone 听对端，播放队列归零次数增加 | 所有已排 PCM 块均已收到播放完成回调。结合归零持续时间与回调至补帧耗时判断调度压力；硬件缓冲和回调交付时机仍会影响与实听的对应关系。 |
+| iPhone 听对端，序号空缺、补到或过晚计数增加 | 空缺按发言者统计；后续补到说明观察到了乱序，过晚表示上游播放窗口已错过该包。最长到包间隔是核心接纳语音包的时间间隔。仅凭这些指标无法定位丢包发生在哪一跳。 |
+| 对端听 iPhone，采集队满丢帧增加 | PCM 已在 iPhone 进入 Opus 编码前丢弃。已交给传输层的帧数只证明本地提交成功。 |
+
+离线复现使用 `swiftc Apple/PlaybackQueueMeter.swift tests/PlaybackQueueCheck.swift -o /tmp/opents-playback-check && /tmp/opents-playback-check`。AVAudioEngine 手动渲染三块已排的合成音，随后两块没有补帧，测得连续 60 ms 有声、40 ms 静音；补回三块后恢复。另用虚拟时间将首个完成回调至补帧延迟设为 75 ms，回调计数归零 35 ms。Rust 测试用合成 Opus 覆盖乱序补到、缺包后迟到、序号回绕和独立发言者；向四帧采集队列连续投入七帧，记录四帧入队、三帧队满丢弃。真机异常时的诊断数据和双端听感仍待采集。

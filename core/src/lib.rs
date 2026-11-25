@@ -23,7 +23,7 @@ use tokio::sync::{mpsc, oneshot};
 use tsclientlib::prelude::*;
 use tsclientlib::{Connection, DisconnectOptions, InMessage, StreamItem};
 use tsproto_packets::packets::{AudioData, CodecType, OutAudio};
-pub use voice::{SpeakerMix, Voice};
+pub use voice::{SpeakerMix, Voice, VoiceDiagnostics};
 
 uniffi::setup_scaffolding!();
 
@@ -330,6 +330,7 @@ async fn run(
                 if !con.can_send_audio() { continue; }
                 if let Some((codec, packet)) = io.packet(frame)? {
                     con.send_audio(packet).map_err(|e| e.to_string())?;
+                    io.voice.audio_sent();
                     last_codec = Some(codec);
                     end_talk.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(65));
                 }

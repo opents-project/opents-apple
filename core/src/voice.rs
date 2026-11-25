@@ -6,8 +6,12 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
 };
+use std::time::Instant;
 use tokio::sync::{mpsc, watch};
-use tsclientlib::{audio::AudioHandler, ClientId};
+use tsclientlib::{
+    audio::{AudioHandler, Error as AudioError},
+    ClientId,
+};
 use tsproto_packets::packets::{AudioData, CodecType, InAudioBuf, OutAudio, OutPacket};
 
 pub const FRAME: usize = 960;
@@ -58,18 +62,72 @@ impl SpeakerMix {
     }
 }
 
+#[derive(Clone, Copy, Default, uniffi::Record)]
+pub struct VoiceDiagnostics {
+    pub rx_packets: u64,
+    pub rx_gap_slots: u64,
+    pub rx_gap_fills: u64,
+    pub rx_late: u64,
+    pub rx_other_rejected: u64,
+    pub rx_longest_interval_ms: u64,
+    pub tx_enqueued: u64,
+    pub tx_full: u64,
+    pub tx_sent: u64,
+}
+
+// A gap is provisional. Reordering can fill it; it does not prove wire loss.
+// Track only one talk spurt per source, with bounded history across u16 wrap.
+struct Arrival {
+    newest: u16,
+    missing: Vec<u16>,
+    last: Instant,
+}
+
+impl Arrival {
+    fn record(&mut self, id: u16, now: Instant, stats: &mut VoiceDiagnostics) {
+        stats.rx_longest_interval_ms = stats
+            .rx_longest_interval_ms
+            .max(now.duration_since(self.last).as_millis() as u64);
+        self.last = now;
+        let forward = id.wrapping_sub(self.newest);
+        if forward > 0 && forward < 0x8000 {
+            stats.rx_gap_slots += u64::from(forward - 1);
+            if forward > 1 || !self.missing.is_empty() {
+                // Upstream accepts at most 50 packets ahead of its playhead.
+                // Keep a little more history for reporting a rejected late fill.
+                const WINDOW: u16 = 64;
+                self.missing.retain(|slot| id.wrapping_sub(*slot) <= WINDOW);
+                self.missing
+                    .extend((1..=WINDOW.min(forward - 1)).map(|back| id.wrapping_sub(back)));
+            }
+            self.newest = id;
+        } else {
+            self.fill_gap(id, stats);
+        }
+    }
+
+    fn fill_gap(&mut self, id: u16, stats: &mut VoiceDiagnostics) {
+        if let Some(index) = self.missing.iter().position(|slot| *slot == id) {
+            self.missing.swap_remove(index);
+            stats.rx_gap_fills += 1;
+        }
+    }
+}
+
 #[derive(Default)]
 struct Playback {
     // Transport IDs distinguish simultaneous connections using one TS identity.
     streams: AudioHandler<(ClientId, u64)>,
     controls: HashMap<u64, SpeakerMix>,
+    arrivals: HashMap<(ClientId, u64), Arrival>,
+    stats: VoiceDiagnostics,
 }
 
 impl Playback {
     fn render(&mut self) -> Vec<f32> {
         let mut output = vec![0.0; FRAME * 2];
-        if self.controls.is_empty() {
-            self.streams.fill_buffer(&mut output);
+        let ended = if self.controls.is_empty() {
+            self.streams.fill_buffer(&mut output)
         } else {
             // The upstream processor exposes each decoded stream before its normal sum.
             // Advance every jitter buffer once, including muted speakers.
@@ -81,7 +139,10 @@ impl Playback {
                         .copied()
                         .unwrap_or_default()
                         .add_to(samples, &mut output);
-                });
+                })
+        };
+        for source in ended {
+            self.arrivals.remove(&source);
         }
         for sample in &mut output {
             *sample = sample.clamp(-1.0, 1.0);
@@ -94,6 +155,9 @@ impl Playback {
 pub struct Voice {
     capture: mpsc::Sender<CapturedFrame>,
     capture_epoch: AtomicU64,
+    tx_enqueued: AtomicU64,
+    tx_full: AtomicU64,
+    tx_sent: AtomicU64,
     enabled: watch::Sender<DeviceState>,
     playback: Mutex<Playback>,
 }
@@ -172,6 +236,9 @@ impl Voice {
             voice: Arc::new(Self {
                 capture,
                 capture_epoch: AtomicU64::new(0),
+                tx_enqueued: AtomicU64::new(0),
+                tx_full: AtomicU64::new(0),
+                tx_sent: AtomicU64::new(0),
                 enabled,
                 playback: Mutex::default(),
             }),
@@ -188,9 +255,47 @@ impl Voice {
             AudioData::S2C { from, .. } | AudioData::S2CWhisper { from, .. } => *from,
             _ => return,
         };
-        let _ = playback
-            .streams
-            .handle_packet((ClientId(from), database_id), packet);
+        let source = (ClientId(from), database_id);
+        let id = packet.data().data().id();
+        let end = packet.data().data().data().len() <= 1;
+        let now = Instant::now();
+        let playback = &mut *playback;
+        let result = playback.streams.handle_packet(source, packet);
+        if !end {
+            playback.stats.rx_packets += 1;
+        }
+        match result {
+            Ok(_) if end => {
+                playback.arrivals.remove(&source);
+            }
+            Ok(_) => {
+                if let Some(arrival) = playback.arrivals.get_mut(&source) {
+                    arrival.record(id, now, &mut playback.stats);
+                } else {
+                    playback.arrivals.insert(
+                        source,
+                        Arrival {
+                            newest: id,
+                            missing: Vec::new(),
+                            last: now,
+                        },
+                    );
+                }
+            }
+            Err(AudioError::TooLate { wanted, got }) if (got.wrapping_sub(wanted) as i16) < 0 => {
+                playback.stats.rx_late += 1;
+                if !end {
+                    if let Some(arrival) = playback.arrivals.get_mut(&source) {
+                        arrival.fill_gap(id, &mut playback.stats);
+                    }
+                }
+            }
+            Err(_) => playback.stats.rx_other_rejected += 1,
+        }
+    }
+
+    pub(crate) fn audio_sent(&self) {
+        self.tx_sent.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -204,7 +309,9 @@ impl Voice {
             output_muted,
         });
         if !output || output_muted {
-            self.playback.lock().unwrap().streams.reset();
+            let mut playback = self.playback.lock().unwrap();
+            playback.streams.reset();
+            playback.arrivals.clear();
         }
     }
 
@@ -224,7 +331,24 @@ impl Voice {
             && (samples.len() == FRAME || samples.len() == 2 * FRAME)
             && self.enabled.borrow().can_capture()
         {
-            let _ = self.capture.try_send(CapturedFrame { epoch, samples });
+            match self.capture.try_send(CapturedFrame { epoch, samples }) {
+                Ok(()) => {
+                    self.tx_enqueued.fetch_add(1, Ordering::Relaxed);
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    self.tx_full.fetch_add(1, Ordering::Relaxed);
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {}
+            }
+        }
+    }
+
+    pub fn diagnostics(&self) -> VoiceDiagnostics {
+        VoiceDiagnostics {
+            tx_enqueued: self.tx_enqueued.load(Ordering::Relaxed),
+            tx_full: self.tx_full.load(Ordering::Relaxed),
+            tx_sent: self.tx_sent.load(Ordering::Relaxed),
+            ..self.playback.lock().unwrap().stats
         }
     }
 
@@ -326,6 +450,71 @@ mod tests {
 
     fn deliver(voice: &Voice, packet: Vec<u8>, db_id: u64) {
         voice.receive(InAudioBuf::try_new(Direction::S2C, packet).unwrap(), db_id)
+    }
+
+    #[test]
+    fn arrival_diagnostics_distinguish_reordering_missing_and_late_packets() {
+        let io = Voice::pair();
+        io.voice.set_devices(false, true, false, false);
+        let enc = encoder().unwrap();
+        for id in [100, 102] {
+            deliver(&io.voice, tone_packet(&enc, id, 7, 440.0), 10);
+        }
+        assert_eq!(io.voice.diagnostics().rx_gap_slots, 1);
+        deliver(&io.voice, tone_packet(&enc, 101, 7, 440.0), 10);
+        assert_eq!(io.voice.diagnostics().rx_gap_fills, 1);
+        deliver(&io.voice, tone_packet(&enc, 104, 7, 440.0), 10);
+        for _ in 0..5 {
+            io.voice.playback_frame();
+        }
+        let before = io.voice.diagnostics();
+        assert_eq!(
+            (before.rx_gap_slots, before.rx_gap_fills, before.rx_late),
+            (2, 1, 0)
+        );
+        deliver(&io.voice, tone_packet(&enc, 103, 7, 440.0), 10);
+        let after = io.voice.diagnostics();
+        assert_eq!(
+            (after.rx_packets, after.rx_gap_fills, after.rx_late),
+            (5, 2, 1)
+        );
+        assert_eq!((after.tx_full, after.rx_other_rejected), (0, 0));
+        // Simultaneous source, wrap-around, and a new talk spurt after mute.
+        for id in [65534, 0, 65535] {
+            deliver(&io.voice, tone_packet(&enc, id, 8, 440.0), 11);
+        }
+        assert_eq!(
+            (
+                io.voice.diagnostics().rx_gap_slots,
+                io.voice.diagnostics().rx_gap_fills
+            ),
+            (3, 3)
+        );
+        io.voice.set_devices(false, false, false, true);
+        io.voice.set_devices(false, true, false, false);
+        deliver(&io.voice, tone_packet(&enc, 220, 7, 440.0), 10);
+        assert_eq!(io.voice.diagnostics().rx_gap_slots, 3);
+    }
+
+    #[test]
+    fn full_capture_queue_counts_only_eligible_frames() {
+        let mut io = Voice::pair();
+        io.set_channel(Some((1, CodecType::OpusVoice))).unwrap();
+        io.voice.set_devices(true, true, false, false);
+        for _ in 0..7 {
+            io.voice.submit_capture(vec![0.1; FRAME]);
+        }
+        let stats = io.voice.diagnostics();
+        assert_eq!((stats.tx_enqueued, stats.tx_full, stats.tx_sent), (4, 3, 0));
+        io.capture.try_recv().unwrap();
+        io.voice.submit_capture(vec![0.1; FRAME]);
+        io.voice.set_devices(true, true, true, false);
+        io.voice.submit_capture(vec![0.1; FRAME]);
+        let stats = io.voice.diagnostics();
+        assert_eq!(
+            (stats.tx_enqueued, stats.tx_full, stats.rx_packets),
+            (5, 3, 0)
+        );
     }
 
     #[test]

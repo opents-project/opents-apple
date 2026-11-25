@@ -154,6 +154,23 @@
         }
       }
     },
+    "Audio frames handed to transport": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio frames handed to transport"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已交给传输层的语音帧"
+          }
+        }
+      }
+    },
     "Audio input was interrupted. Start the test again.": {
       "extractionState": "manual",
       "localizations": {
@@ -273,6 +290,23 @@
         }
       }
     },
+    "Buffers awaiting playback callback": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buffers awaiting playback callback"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待播放完成回调的块数"
+          }
+        }
+      }
+    },
     "Cancel": {
       "extractionState": "manual",
       "localizations": {
@@ -320,6 +354,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "已取消"
+          }
+        }
+      }
+    },
+    "Capture frames queued / queue full": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capture frames queued / queue full"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "采集入队帧 / 队满丢帧"
           }
         }
       }
@@ -1191,6 +1242,23 @@
         }
       }
     },
+    "Incoming voice · current connection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incoming voice · current connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接收语音 · 当前连接"
+          }
+        }
+      }
+    },
     "Input device": {
       "extractionState": "manual",
       "localizations": {
@@ -1242,6 +1310,23 @@
         }
       }
     },
+    "Late / other rejected packets": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Late / other rejected packets"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "过晚 / 其他被拒语音包"
+          }
+        }
+      }
+    },
     "Left %lld%%": {
       "extractionState": "manual",
       "localizations": {
@@ -1289,6 +1374,74 @@
           "stringUnit": {
             "state": "translated",
             "value": "加载更早记录"
+          }
+        }
+      }
+    },
+    "Local playback · current audio engine": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local playback · current audio engine"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本机播放 · 当前音频引擎"
+          }
+        }
+      }
+    },
+    "Longest callback to refill": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Longest callback to refill"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回调至补帧最长耗时"
+          }
+        }
+      }
+    },
+    "Longest empty interval": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Longest empty interval"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "队列归零最长时间"
+          }
+        }
+      }
+    },
+    "Longest interval during speech": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Longest interval during speech"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同一段发言内最长到包间隔"
           }
         }
       }
@@ -1633,6 +1786,23 @@
         }
       }
     },
+    "Outgoing voice · current connection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outgoing voice · current connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送语音 · 当前连接"
+          }
+        }
+      }
+    },
     "Output device": {
       "extractionState": "manual",
       "localizations": {
@@ -1735,6 +1905,23 @@
         }
       }
     },
+    "Playback queue drained": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback queue drained"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放队列归零次数"
+          }
+        }
+      }
+    },
     "Playback unavailable: %@": {
       "extractionState": "manual",
       "localizations": {
@@ -1833,6 +2020,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "读取失败"
+          }
+        }
+      }
+    },
+    "Received audio packets": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Received audio packets"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收到的语音包"
           }
         }
       }
@@ -2088,6 +2292,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "发送"
+          }
+        }
+      }
+    },
+    "Sequence gaps / later filled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sequence gaps / later filled"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "序号空缺 / 后续补到"
           }
         }
       }
@@ -2564,6 +2785,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "语音激活"
+          }
+        }
+      }
+    },
+    "Voice diagnostics": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice diagnostics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语音诊断"
           }
         }
       }

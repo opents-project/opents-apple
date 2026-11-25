@@ -16,6 +16,7 @@ final class VoiceAudio: ObservableObject {
     @Published private(set) var voice: Voice?
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
+    private(set) var playbackMeter = PlaybackQueueMeter()
     private var observer: NSObjectProtocol?
     private var installedTap = false
     private let gate = CaptureGate()
@@ -148,6 +149,7 @@ final class VoiceAudio: ObservableObject {
         installedTap = false
         let previous = player
         player = nil
+        playbackMeter = PlaybackQueueMeter()
         engine?.stop()
         previous?.stop()
         engine = nil
@@ -243,7 +245,7 @@ final class VoiceAudio: ObservableObject {
         }
     }
 
-    private func schedule(_ node: AVAudioPlayerNode, voice: Voice) {
+    private func schedule(_ node: AVAudioPlayerNode, voice: Voice, completion: UInt64? = nil) {
         guard node === player,
               let buffer = AVAudioPCMBuffer(pcmFormat: stereo, frameCapacity: 960),
               let channels = buffer.floatChannelData else { return }
@@ -253,10 +255,13 @@ final class VoiceAudio: ObservableObject {
             channels[1][i] = samples[2 * i + 1]
         }
         buffer.frameLength = 960
+        let meter = playbackMeter
+        meter.scheduled(refilling: completion)
         node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self, weak node] _ in
+            let completed = meter.completed()
             Task { @MainActor in
                 guard let self, let node else { return }
-                self.schedule(node, voice: voice)
+                self.schedule(node, voice: voice, completion: completed)
             }
         }
     }
