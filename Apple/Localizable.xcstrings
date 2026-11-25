@@ -18,19 +18,19 @@
         }
       }
     },
-    "%@, packet loss %@": {
+    "%@, packet loss %@, %@, %@": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@, packet loss %@"
+            "value": "%1$@, %2$@, %3$@, %4$@"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@，丢包 %@"
+            "value": "%1$@，%2$@，%3$@，%4$@"
           }
         }
       }
@@ -749,6 +749,40 @@
         }
       }
     },
+    "Connection owner": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection owner"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数据归属"
+          }
+        }
+      }
+    },
+    "Connection quality for %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection quality for %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的连接质量"
+          }
+        }
+      }
+    },
     "Connect…": {
       "extractionState": "manual",
       "localizations": {
@@ -1017,6 +1051,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "完成"
+          }
+        }
+      }
+    },
+    "Down loss %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Down loss %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下行丢包 %@"
           }
         }
       }
@@ -1922,6 +1973,23 @@
         }
       }
     },
+    "Outgoing packet loss": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outgoing packet loss"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上行丢包率"
+          }
+        }
+      }
+    },
     "Outgoing voice · current connection": {
       "extractionState": "manual",
       "localizations": {
@@ -2054,6 +2122,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "读取权限不足。"
+          }
+        }
+      }
+    },
+    "Ping %@ ± %@ ms": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ping %@ ± %@ ms"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "延迟 %@ ± %@ 毫秒"
           }
         }
       }
@@ -2908,6 +2993,23 @@
         }
       }
     },
+    "This client": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This client"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本客户端"
+          }
+        }
+      }
+    },
     "Transfer failed": {
       "extractionState": "manual",
       "localizations": {
@@ -2955,6 +3057,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "暂时无法提交消息。"
+          }
+        }
+      }
+    },
+    "Up loss %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up loss %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上行丢包 %@"
           }
         }
       }
@@ -3142,6 +3261,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "你的昵称"
+          }
+        }
+      }
+    },
+    "↑ %@/s": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↑ %@/s"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↑ %@/秒"
+          }
+        }
+      }
+    },
+    "↓ %@/s": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↓ %@/s"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↓ %@/秒"
           }
         }
       }

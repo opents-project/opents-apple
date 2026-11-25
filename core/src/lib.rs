@@ -1,6 +1,7 @@
 mod chat;
 mod identity;
 pub use identity::{parse_identity_export, stored_identity_uid, ImportedIdentity};
+mod member_quality;
 mod permissions;
 pub use permissions::{
     EffectivePermission, GroupKind, ListedGroup, PermissionAssignment, PermissionOverview,
@@ -415,6 +416,11 @@ async fn run(
             StreamItem::NetworkStatsUpdated => {
                 if let Ok(stats) = con.get_network_stats() {
                     io.voice.update_quality(stats);
+                    io.voice
+                        .member_quality
+                        .lock()
+                        .unwrap()
+                        .poll(&mut con, std::time::Instant::now());
                 }
                 continue;
             }
@@ -461,7 +467,20 @@ async fn run(
                 }
                 continue;
             }
+            StreamItem::MessageResult(handle, result) => {
+                io.voice.member_quality.lock().unwrap().reply(
+                    handle,
+                    result.is_err(),
+                    std::time::Instant::now(),
+                );
+                continue;
+            }
             StreamItem::BookEvents(events) if ready => {
+                io.voice.member_quality.lock().unwrap().observe(
+                    &con,
+                    &events,
+                    std::time::Instant::now(),
+                );
                 let book = con.get_state().map_err(|e| e.to_string())?;
                 let current = book.clients.get(&book.own_client).map(|me| me.channel.0);
                 inbox

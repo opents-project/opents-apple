@@ -153,15 +153,17 @@ impl Playback {
 #[derive(Clone, Copy, uniffi::Record)]
 pub struct ConnectionQuality {
     pub ping_ms: Option<f64>,
-    pub deviation_ms: f64,
+    pub deviation_ms: Option<f64>,
     pub incoming_loss: Option<f32>,
-    pub incoming_bytes_per_second: u64,
-    pub outgoing_bytes_per_second: u64,
+    pub outgoing_loss: Option<f32>,
+    pub incoming_bytes_per_second: Option<u64>,
+    pub outgoing_bytes_per_second: Option<u64>,
 }
 
 #[derive(uniffi::Object)]
 pub struct Voice {
     quality: Mutex<Option<(Instant, ConnectionQuality)>>,
+    pub(crate) member_quality: Mutex<crate::member_quality::MemberQuality>,
     capture: mpsc::Sender<CapturedFrame>,
     capture_epoch: AtomicU64,
     tx_enqueued: AtomicU64,
@@ -245,6 +247,7 @@ impl Voice {
             voice: Arc::new(Self {
                 capture,
                 quality: Mutex::default(),
+                member_quality: Mutex::default(),
                 capture_epoch: AtomicU64::new(0),
                 tx_enqueued: AtomicU64::new(0),
                 tx_full: AtomicU64::new(0),
@@ -267,10 +270,11 @@ impl Voice {
         let incoming = sum([InSpeech, InKeepalive, InControl]);
         let quality = ConnectionQuality {
             ping_ms: (!stats.rtt.is_zero()).then(|| stats.rtt.as_secs_f64() * 1000.0),
-            deviation_ms: stats.rtt_dev.as_secs_f64() * 1000.0,
+            deviation_ms: (!stats.rtt.is_zero()).then(|| stats.rtt_dev.as_secs_f64() * 1000.0),
+            outgoing_loss: None,
             incoming_loss: (incoming > 0).then(|| stats.get_packetloss_s2c_total()),
-            incoming_bytes_per_second: incoming,
-            outgoing_bytes_per_second: sum([OutSpeech, OutKeepalive, OutControl]),
+            incoming_bytes_per_second: Some(incoming),
+            outgoing_bytes_per_second: Some(sum([OutSpeech, OutKeepalive, OutControl])),
         };
         *self.quality.lock().unwrap() = Some((Instant::now(), quality));
     }
@@ -379,6 +383,17 @@ impl Voice {
                 Err(mpsc::error::TrySendError::Closed(_)) => {}
             }
         }
+    }
+
+    pub fn member_connection_quality(
+        &self,
+        client_id: u16,
+        database_id: u64,
+    ) -> Option<ConnectionQuality> {
+        self.member_quality
+            .lock()
+            .unwrap()
+            .read(client_id, database_id, Instant::now())
     }
 
     pub fn connection_quality(&self) -> Option<ConnectionQuality> {
