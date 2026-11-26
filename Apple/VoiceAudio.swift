@@ -23,42 +23,54 @@ final class VoiceAudio: ObservableObject {
     @Published private(set) var audioInterrupted = false
     private var sessionObservers: [NSObjectProtocol] = []
     private var interruptedSettings: (mic: Bool, play: Bool)?
+    private var ownsAudioSession = false
     #endif
     private var installedTap = false
     private var gate = CaptureGate()
     private let stereo = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+    @Published private var requestedOutput = true
+    @Published private var resumeMicrophone = false
+    private var microphonePreferenceKey: String?
+    private var microphoneMuted = false
+    private var microphoneRequest: UInt64 = 0
+    private var tabSelected = true
+    private var tabRevision: UInt64 = 0
 
-    func connect(_ voice: Voice) {
-        disconnect()
+    func connect(_ voice: Voice, serverKey: String) {
+        disconnect(preservingPreferences: true)
+        let key = "connectionMicrophoneMuted.v1." + serverKey
+        if key != microphonePreferenceKey {
+            microphonePreferenceKey = key
+            microphoneMuted = UserDefaults.standard.bool(forKey: key)
+            requestedOutput = true
+        }
+        resumeMicrophone = !microphoneMuted && !voiceActivated && MicrophoneCapture.isAuthorized
         self.voice = voice
-        #if os(macOS)
-        requestedOutput = true
         if tabSelected { activateTabAudio() }
-        #else
-        observeSession()
-        configure(mic: false, play: true)
-        #endif
     }
 
     func setMicrophone(_ on: Bool) async {
         guard let original = voice else { return }
-        #if os(macOS)
+        microphoneRequest &+= 1
+        let request = microphoneRequest
+        if on && !MicrophoneCapture.isAuthorized {
+            let allowed = await AVCaptureDevice.requestAccess(for: .audio)
+            guard voice === original, request == microphoneRequest else { return }
+            guard allowed else {
+                message = String(localized: "Allow microphone access in System Settings to talk.")
+                return
+            }
+        }
+        microphoneMuted = !on
+        if let microphonePreferenceKey {
+            UserDefaults.standard.set(microphoneMuted, forKey: microphonePreferenceKey)
+        }
+        resumeMicrophone = on
         guard tabSelected else { return }
-        let revision = tabRevision
-        #endif
         if installedTap {
             microphone = on
-            if !on { press(false) }
             publishDevices()
             return
-        }
-        if on {
-            let allowed = await AVCaptureDevice.requestAccess(for: .audio)
-            guard voice === original else { return }
-            #if os(macOS)
-            guard tabSelected, revision == tabRevision else { return }
-            #endif
-            guard allowed else { message = String(localized: "Allow microphone access in System Settings to talk."); return }
         }
         #if os(iOS)
         if interruptedSettings != nil {
@@ -67,25 +79,26 @@ final class VoiceAudio: ObservableObject {
             return
         }
         #endif
-        configure(mic: on, play: output)
+        configure(mic: on, play: requestedOutput)
     }
 
     func toggleOutput() {
-        #if os(macOS)
-        guard tabSelected else { return }
-        #endif
+        guard voice != nil else { return }
+        guard tabSelected else {
+            requestedOutput.toggle()
+            return
+        }
         #if os(iOS)
         if interruptedSettings != nil {
             interruptedSettings?.play.toggle()
             output = interruptedSettings?.play ?? false
+            requestedOutput = output
             return
         }
         #endif
         guard let player else { configure(mic: microphone, play: true); return }
         output.toggle()
-        #if os(macOS)
         requestedOutput = output
-        #endif
         player.volume = output ? 1 : 0
         if !output { press(false) }
         publishDevices()
@@ -108,38 +121,59 @@ final class VoiceAudio: ObservableObject {
     private var buttonHeld = false
     private var shortcutHeld = false
 
-    #if os(macOS)
-    @Published private(set) var devices = MacDeviceSelection()
-    private var deviceMonitor: MacDeviceMonitor?
-    private var requestedOutput = false
-    private var resumeMicrophone = false
-    private var tabSelected = true
-    private var tabRevision: UInt64 = 0
-
     func setTabSelected(_ selected: Bool) {
         guard tabSelected != selected else { return }
         tabSelected = selected
         tabRevision &+= 1
         if selected {
+            #if os(macOS)
             let shortcutEnabled = UserDefaults.standard.bool(forKey: "globalTalkShortcut")
             if globalShortcut != shortcutEnabled { globalShortcut = shortcutEnabled }
+            #endif
             if voice != nil { activateTabAudio() }
         } else {
             resumeMicrophone = microphone
-            deviceMonitor = nil
-            stopEngine()
+            deactivateTabAudio()
         }
     }
 
     private func activateTabAudio() {
+        #if os(macOS)
         devices = MacDeviceSelection()
         devices.inventory = MacAudioHardware.inventory()
         deviceMonitor = MacDeviceMonitor { [weak self] in self?.refreshDevices() }
-        configure(mic: resumeMicrophone, play: requestedOutput)
+        #elseif os(iOS)
+        observeSession()
+        #endif
+        configure(mic: resumeMicrophone && MicrophoneCapture.isAuthorized, play: requestedOutput)
     }
+
+    private func deactivateTabAudio() {
+        #if os(macOS)
+        deviceMonitor = nil
+        #elseif os(iOS)
+        sessionObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        sessionObservers.removeAll()
+        interruptedSettings = nil
+        audioInterrupted = false
+        #endif
+        stopEngine()
+        #if os(iOS)
+        if ownsAudioSession {
+            ownsAudioSession = false
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
+        #endif
+    }
+
+    #if os(macOS)
+    @Published private(set) var devices = MacDeviceSelection()
+    private var deviceMonitor: MacDeviceMonitor?
 
     var hasInputRoute: Bool { installedTap }
     var hasOutputRoute: Bool { player != nil }
+    var microphoneEnabledForTab: Bool { tabSelected ? microphone : resumeMicrophone }
+    var outputEnabledForTab: Bool { tabSelected ? output : requestedOutput }
 
     func selectDevice(_ side: DeviceSide, uid: String?) {
         guard tabSelected else { return }
@@ -185,16 +219,14 @@ final class VoiceAudio: ObservableObject {
     }
 
     func press(_ held: Bool) {
-        #if os(macOS)
         guard tabSelected || !held else { return }
-        #endif
         buttonHeld = held
         updateTransmission()
     }
 
     private func updateTransmission() {
         #if os(iOS)
-        let available = !audioInterrupted
+        let available = tabSelected && !audioInterrupted
         #else
         let available = tabSelected
         #endif
@@ -202,38 +234,34 @@ final class VoiceAudio: ObservableObject {
         gate.configure(held: talking, threshold: available && channelAllowsTransmission && voiceActivated && microphone && output ? threshold : nil)
     }
 
-    func disconnect() {
-        #if os(macOS)
-        deviceMonitor = nil
+    func disconnect(preservingPreferences: Bool = false) {
+        microphoneRequest &+= 1
+        deactivateTabAudio()
         resumeMicrophone = false
-        requestedOutput = false
-        #endif
-        #if os(iOS)
-        sessionObservers.forEach { NotificationCenter.default.removeObserver($0) }
-        sessionObservers.removeAll()
-        interruptedSettings = nil
-        audioInterrupted = false
-        #endif
-        stopEngine()
+        if !preservingPreferences {
+            requestedOutput = true
+            microphonePreferenceKey = nil
+            microphoneMuted = false
+        }
         voice = nil
         message = nil
-        #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
     }
 
     #if os(iOS)
     private func observeSession() {
         guard let observedVoice = voice else { return }
+        let revision = tabRevision
         let center = NotificationCenter.default
         sessionObservers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
             let type = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let options = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             Task { @MainActor in
-                guard let self, self.voice === observedVoice else { return }
+                guard let self, self.tabSelected, self.tabRevision == revision,
+                      self.voice === observedVoice else { return }
                 if type == AVAudioSession.InterruptionType.began.rawValue {
                     guard self.interruptedSettings == nil else { return }
                     self.interruptedSettings = (self.microphone, self.output)
+                    self.ownsAudioSession = false
                     self.stopEngine()
                     self.audioInterrupted = true
                     self.microphone = self.interruptedSettings?.mic ?? false
@@ -248,6 +276,7 @@ final class VoiceAudio: ObservableObject {
                     } else {
                         self.microphone = false
                         self.output = false
+                        self.requestedOutput = false
                         self.message = String(localized: "Audio interrupted. Reconnect to resume audio.")
                     }
                 }
@@ -258,7 +287,8 @@ final class VoiceAudio: ObservableObject {
             guard reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue ||
                   reason == AVAudioSession.RouteChangeReason.newDeviceAvailable.rawValue else { return }
             Task { @MainActor in
-                guard let self, self.voice === observedVoice, self.interruptedSettings == nil, self.engine != nil else { return }
+                guard let self, self.tabSelected, self.tabRevision == revision, self.voice === observedVoice,
+                      self.interruptedSettings == nil, self.engine != nil else { return }
                 self.configure(mic: self.microphone, play: self.output)
             }
         })
@@ -290,13 +320,11 @@ final class VoiceAudio: ObservableObject {
     }
 
     private func configure(mic: Bool, play: Bool) {
+        guard tabSelected, let voice else { return }
         stopEngine()
         standardInput = false
         message = nil
-        guard let voice else { return }
-        #if os(macOS)
         requestedOutput = play
-        #endif
         if mic {
             do { try startAudio(voice, mic: true, play: play); return }
             catch {
@@ -341,6 +369,7 @@ final class VoiceAudio: ObservableObject {
                        bind: (AVAudioEngine) throws -> Void, verify: (AVAudioEngine) throws -> Void) throws {
         #if os(iOS)
         try MicrophoneCapture.activateSession(microphone: mic, processing: processing)
+        ownsAudioSession = true
         #endif
         let engine = AVAudioEngine()
         self.engine = engine

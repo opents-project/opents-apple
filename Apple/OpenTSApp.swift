@@ -26,7 +26,7 @@ struct OpenTSApp: App {
             CommandMenu("Connections") {
                 Button("Connect…") { tabs.requestConnection(forceNewTab: tabs.hasActiveConnection) }
                     .keyboardShortcut("s", modifiers: .command)
-                Button("Disconnect from Current") { tabs.selected.model.disconnect() }
+                Button("Disconnect from Current") { tabs.disconnect(tabs.selected.model) }
                     .keyboardShortcut("d", modifiers: .command)
                     .disabled(!tabs.selected.model.active)
                 Button("Disconnect from All", action: tabs.disconnectAll)
@@ -70,7 +70,7 @@ private struct StatusMenu: View {
             tabs.requestConnection(forceNewTab: tabs.hasActiveConnection)
             showWindow()
         }
-        Button(model.active && model.server.isEmpty ? "Cancel Connection" : "Disconnect", action: model.disconnect)
+        Button(model.active && model.server.isEmpty ? "Cancel Connection" : "Disconnect") { tabs.disconnect(model) }
             .disabled(!model.active)
         Divider()
         VoiceMenu(audio: model.audio).disabled(model.server.isEmpty || model.reconnecting)

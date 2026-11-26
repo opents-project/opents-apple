@@ -130,11 +130,11 @@ final class ServerModel: ObservableObject {
                     if update.reconnecting {
                         if previous?.reconnecting != true {
                             self?.play(.disconnected)
-                            self?.audio.disconnect()
+                            self?.audio.disconnect(preservingPreferences: true)
                         }
                     } else if !update.server.isEmpty {
                         if previous?.server.isEmpty != false || previous?.audioGeneration != update.audioGeneration {
-                            self?.audio.connect(connection.audio())
+                            self?.audio.connect(connection.audio(), serverKey: update.serverKey ?? "address:\(destination)")
                             UserDefaults.standard.set(destination, forKey: "lastServer")
                             UserDefaults.standard.set(self?.nickname, forKey: "lastNickname")
                         }

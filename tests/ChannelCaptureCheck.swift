@@ -16,6 +16,7 @@ struct ChannelCaptureCheck {
             return output
         }
 
+        precondition(feed(960, left: 1, right: 1, epoch: 1).isEmpty)
         gate.configure(held: true, threshold: nil)
         precondition(feed(480, left: 1, right: 1, epoch: 1).isEmpty)
         precondition(feed(960, left: 1, right: 1, epoch: 0).isEmpty)
@@ -25,6 +26,8 @@ struct ChannelCaptureCheck {
         for i in 0..<960 {
             precondition(frames[0][2 * i] == 0.5 && frames[0][2 * i + 1] == -0.25)
         }
+        gate.configure(held: false, threshold: nil)
+        precondition(feed(960, left: 1, right: 1, epoch: 3).isEmpty)
 
         // A tap may skip the entire pending interval. Its local remainder and
         // the VAD hangover must still expire when the next generation arrives.

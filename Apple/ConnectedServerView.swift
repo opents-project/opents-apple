@@ -4,6 +4,7 @@ struct ConnectedServerView: View {
     @ObservedObject var model: ServerModel
     var tabSelected = true
     #if os(macOS)
+    var tabs: ServerTabs? = nil
     var connections: ServerConnectionsSection? = nil
     #endif
     @State private var selection: SidebarSelection?
@@ -27,6 +28,7 @@ struct ConnectedServerView: View {
     @State private var password = ""
     #if os(macOS)
     @State private var showRecovery = false
+    @State private var showingPushToTalk = false
     @AppStorage(ChannelTreeDensity.storageKey) private var channelTreeDensity = ChannelTreeDensity.standard
     private static let toolbarButtonSize: CGFloat = 24
     #endif
@@ -61,7 +63,10 @@ struct ConnectedServerView: View {
     }
 
     private func detailTitle(chatAlongside: Bool) -> String {
-        showingChat && !chatAlongside
+        #if os(macOS)
+        if showingPushToTalk { return String(localized: "Push to Talk Panel") }
+        #endif
+        return showingChat && !chatAlongside
             ? String(localized: "Text chat")
             : selectedMember?.member.name ?? selectedRoom?.name ?? model.server
     }
@@ -138,6 +143,9 @@ struct ConnectedServerView: View {
         .onChange(of: selection) { _, target in
             if case .member? = target {
                 showingChat = false
+                #if os(macOS)
+                showingPushToTalk = false
+                #endif
                 compactColumn = .detail
             }
         }
@@ -186,6 +194,31 @@ struct ConnectedServerView: View {
         .alert("Couldn’t Join Channel", isPresented: Binding(get: { tabSelected && model.joinError != nil }, set: { if !$0, tabSelected { model.joinError = nil } })) {
             Button("OK") { model.joinError = nil }
         } message: { Text(model.joinError ?? "") }
+    }
+
+    @ViewBuilder private func detailContent(chatAlongside: Bool) -> some View {
+        #if os(macOS)
+        if let tabs, showingPushToTalk {
+            PushToTalkPanel(tabs: tabs)
+        } else {
+            channelAndChat(alongside: chatAlongside)
+        }
+        #else
+        channelAndChat(alongside: chatAlongside)
+        #endif
+    }
+
+    private func channelAndChat(alongside: Bool) -> some View {
+        HStack(spacing: 0) {
+            if !showingChat || alongside {
+                channelDetail.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            if showingChat {
+                if alongside { Divider() }
+                ChatView(model: model, selection: $chatSelection)
+                    .frame(maxWidth: alongside ? 370 : .infinity, maxHeight: .infinity)
+            }
+        }
     }
 
     private var sidebar: some View {
@@ -380,7 +413,7 @@ struct ConnectedServerView: View {
             #if os(macOS)
             HStack(spacing: 0) {
                 chatButton(closeChatReplacesDetail: closeChatReplacesDetail)
-                DeviceButtons(audio: model.audio, minimumSize: Self.toolbarButtonSize)
+                if tabs != nil { pushToTalkButton }
             }
             .labelStyle(.iconOnly)
             #else
@@ -394,19 +427,50 @@ struct ConnectedServerView: View {
                 }
                     .disabled(model.groupPermissionSession == nil)
                 Button("My Identity", systemImage: "person.text.rectangle") { showingIdentity = true }
-                Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right", action: model.disconnect)
+                Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right") {
+                    #if os(macOS)
+                    if let tabs { tabs.disconnect(model) } else { model.disconnect() }
+                    #else
+                    model.disconnect()
+                    #endif
+                }
             } label: { Label("More", systemImage: "ellipsis.circle") }
         }
     }
 
+    #if os(macOS)
+    private var pushToTalkButton: some View {
+        Button {
+            showingPushToTalk.toggle()
+            compactColumn = .detail
+        } label: {
+            Label("Push to Talk Panel", systemImage: showingPushToTalk ? "waveform.circle.fill" : "waveform")
+                .frame(minWidth: Self.toolbarButtonSize, minHeight: Self.toolbarButtonSize)
+        }
+        .help("Push to Talk Panel")
+        .accessibilityAddTraits(showingPushToTalk ? .isSelected : [])
+    }
+    #endif
+
     private func chatButton(closeChatReplacesDetail: Bool) -> some View {
-        let returningToChannel = showingChat && closeChatReplacesDetail
-        let title: LocalizedStringKey = returningToChannel ? "Back to channel" : (showingChat ? "Close chat" : "Text chat")
-        let icon = returningToChannel ? "chevron.left" : (showingChat ? "text.bubble.fill" : "text.bubble")
-        return Button {
-            showingChat.toggle()
+        #if os(macOS)
+        let chatVisible = showingChat && !showingPushToTalk
+        #else
+        let chatVisible = showingChat
+        #endif
+        let returningToChannel = chatVisible && closeChatReplacesDetail
+        let title: LocalizedStringKey = returningToChannel ? "Back to channel" : (chatVisible ? "Close chat" : "Text chat")
+        let icon = returningToChannel ? "chevron.left" : (chatVisible ? "text.bubble.fill" : "text.bubble")
+        let toggleChat = {
+            showingChat = !chatVisible
+            #if os(macOS)
+            showingPushToTalk = false
+            #endif
             compactColumn = !showingChat && selection == nil && Self.startsInChannelList
                 ? .sidebar : .detail
+        }
+        return Button {
+            toggleChat()
         } label: {
             #if os(macOS)
             Label(title, systemImage: icon)
@@ -470,6 +534,9 @@ struct ConnectedServerView: View {
         model.chat.directNames[peer] = member.name
         chatSelection = peer
         showingChat = true
+        #if os(macOS)
+        showingPushToTalk = false
+        #endif
         compactColumn = .detail
     }
 
@@ -554,6 +621,9 @@ struct ConnectedServerView: View {
     private func revealCurrent() {
         guard let id = model.currentChannel else { return }
         showingChat = false
+        #if os(macOS)
+        showingPushToTalk = false
+        #endif
         #if os(iOS)
         if Self.startsInChannelList || widthClass == .compact {
             selection = nil

@@ -4,7 +4,9 @@ struct ServerView: View {
     @ObservedObject var model: ServerModel
     var tabSelected = true
     #if os(macOS)
+    var tabs: ServerTabs? = nil
     var connections: ServerConnectionsSection? = nil
+    @AppStorage(ChannelTreeDensity.storageKey) private var channelTreeDensity = ChannelTreeDensity.standard
     #endif
     #if DEBUG
     @State private var showingFilesPreview = false
@@ -21,6 +23,7 @@ struct ServerView: View {
                 NavigationSplitView {
                     List { connections }
                         .listStyle(.sidebar)
+                        .environment(\.sidebarRowSize, channelTreeDensity == .compact ? .small : .medium)
                         .toolbar(removing: .sidebarToggle)
                         .navigationSplitViewColumnWidth(min: 170, ideal: 245, max: 440)
                 } detail: {
@@ -35,7 +38,7 @@ struct ServerView: View {
             #endif
         } else {
             #if os(macOS)
-            ConnectedServerView(model: model, tabSelected: tabSelected, connections: connections)
+            ConnectedServerView(model: model, tabSelected: tabSelected, tabs: tabs, connections: connections)
             #else
             ConnectedServerView(model: model, tabSelected: tabSelected)
             #endif

@@ -1,6 +1,8 @@
 import AVFoundation
 
 enum MicrophoneCapture {
+    static var isAuthorized: Bool { AVCaptureDevice.authorizationStatus(for: .audio) == .authorized }
+
     #if os(iOS)
     static func activateSession(microphone: Bool, processing: Bool) throws {
         let session = AVAudioSession.sharedInstance()

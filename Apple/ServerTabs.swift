@@ -23,6 +23,7 @@ final class ServerTabs: ObservableObject {
     @Published private(set) var selected: Tab
     @Published var connection: Connection?
     private var observers: [Tab.ID: AnyCancellable] = [:]
+    private var audioLease: (token: UUID, target: Tab)?
 
     var hasActiveConnection: Bool { entries.contains { $0.model.active } }
 
@@ -35,6 +36,7 @@ final class ServerTabs: ObservableObject {
 
     func select(_ tab: Tab) {
         guard selected.id != tab.id, entries.contains(where: { $0.id == tab.id }) else { return }
+        finishAudioLease(restoreSelection: false)
         selected.model.setTabSelected(false)
         tab.model.setTabSelected(true)
         selected = tab
@@ -45,6 +47,8 @@ final class ServerTabs: ObservableObject {
         if selected.id == tab.id {
             let next = index + 1 < entries.count ? index + 1 : index - 1
             select(entries[next])
+        } else {
+            finishAudioLease()
         }
         tab.model.disconnect()
         observers[tab.id] = nil
@@ -52,6 +56,7 @@ final class ServerTabs: ObservableObject {
     }
 
     func requestConnection(forceNewTab: Bool = false) {
+        finishAudioLease()
         connection = makeConnection(forceNewTab: forceNewTab)
     }
 
@@ -72,6 +77,7 @@ final class ServerTabs: ObservableObject {
             select(tab)
             model = tab.model
         } else {
+            finishAudioLease()
             model = selected.model
             if model.active { model.disconnect() }
         }
@@ -83,7 +89,45 @@ final class ServerTabs: ObservableObject {
     }
 
     func disconnectAll() {
+        finishAudioLease(restoreSelection: false)
         for tab in entries { tab.model.disconnect() }
+        selected.model.audio.setTabSelected(true)
+    }
+
+    func leaseAudio(for tab: Tab) -> UUID? {
+        guard audioLease == nil, entries.contains(where: { $0.id == tab.id }),
+              tab.model.active, !tab.model.server.isEmpty else { return nil }
+        let token = UUID()
+        audioLease = (token, tab)
+        if selected.id != tab.id {
+            selected.model.audio.setTabSelected(false)
+            tab.model.audio.setTabSelected(true)
+        }
+        return token
+    }
+
+    func ownsAudioLease(_ token: UUID) -> Bool { audioLease?.token == token }
+
+    func releaseAudio(_ token: UUID) {
+        guard ownsAudioLease(token) else { return }
+        finishAudioLease()
+    }
+
+    func disconnect(_ model: ServerModel) {
+        let disconnectsSelection = model === selected.model
+        finishAudioLease(restoreSelection: !disconnectsSelection)
+        model.disconnect()
+        if disconnectsSelection { model.audio.setTabSelected(true) }
+    }
+
+    private func finishAudioLease(restoreSelection: Bool = true) {
+        guard let lease = audioLease else { return }
+        audioLease = nil
+        lease.target.model.audio.press(false)
+        if selected.id != lease.target.id {
+            lease.target.model.audio.setTabSelected(false)
+            if restoreSelection { selected.model.audio.setTabSelected(true) }
+        }
     }
 
     func label(for tab: Tab) -> (title: String, subtitle: String?) {
@@ -124,6 +168,7 @@ final class ServerTabs: ObservableObject {
     }
 }
 
+
 struct ServerTabsView: View {
     @ObservedObject var tabs: ServerTabs
 
@@ -131,8 +176,10 @@ struct ServerTabsView: View {
         ZStack {
             ForEach(tabs.entries) { tab in
                 let selected = tab.id == tabs.selected.id
-                ServerView(model: tab.model, tabSelected: selected,
-                           connections: tabs.entries.count > 1 ? ServerConnectionsSection(tabs: tabs) : nil)
+                ServerView(model: tab.model, tabSelected: selected, tabs: tabs,
+                           connections: tabs.entries.count > 1 || tab.model.active
+                               ? ServerConnectionsSection(tabs: tabs, showsChannelTree: !tab.model.server.isEmpty)
+                               : nil)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .opacity(selected ? 1 : 0)
                     .allowsHitTesting(selected)
@@ -150,20 +197,27 @@ struct ServerTabsView: View {
 
 struct ServerConnectionsSection: View {
     @ObservedObject var tabs: ServerTabs
+    let showsChannelTree: Bool
 
     var body: some View {
         Section {
             ForEach(tabs.entries) { tab in
                 let label = tabs.label(for: tab)
                 let selected = tab.id == tabs.selected.id
-                ServerConnectionRow(title: label.title, subtitle: label.subtitle, model: tab.model, selected: selected) {
+                ServerConnectionRow(title: label.title, subtitle: label.subtitle ?? tab.model.currentRoom?.name,
+                                    model: tab.model, audio: tab.model.audio, selected: selected,
+                                    showsChannelTree: showsChannelTree) {
                     tabs.select(tab)
                 }
                 .selectionDisabled()
                 .contextMenu {
+                    if tab.model.audio.voice != nil && !tab.model.reconnecting {
+                        ConnectionAudioActions(audio: tab.model.audio, inMenu: true)
+                        Divider()
+                    }
                     let disconnectTitle: LocalizedStringKey = tab.model.active && tab.model.server.isEmpty
                         ? "Cancel Connection" : "Disconnect"
-                    Button(disconnectTitle, systemImage: "bolt.horizontal.circle", action: tab.model.disconnect)
+                    Button(disconnectTitle, systemImage: "bolt.horizontal.circle") { tabs.disconnect(tab.model) }
                         .disabled(!tab.model.active)
                     Button("Remove Connection", systemImage: "xmark", role: .destructive) { tabs.close(tab) }
                 }
@@ -191,44 +245,63 @@ private struct ServerConnectionRow: View {
     let title: String
     let subtitle: String?
     @ObservedObject var model: ServerModel
+    @ObservedObject var audio: VoiceAudio
     let selected: Bool
+    let showsChannelTree: Bool
     let open: () -> Void
+    @Environment(\.sidebarRowSize) private var sidebarRowSize
+    private var leadingExpansion: CGFloat { showsChannelTree ? 16 : 6 }
 
     var body: some View {
-        Button(action: open) {
-            HStack(spacing: 8) {
-                connectionIcon.frame(width: 16)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(verbatim: title).fontWeight(selected ? .semibold : .regular)
-                    if let subtitle {
-                        Text(verbatim: subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+        if #available(macOS 26.0, *), sidebarRowSize == .small {
+            row.listRowInsets(.vertical, 2)
+        } else {
+            row.padding(.vertical, sidebarRowSize == .small ? -2 : 0)
+        }
+    }
+
+    private var row: some View {
+        HStack(spacing: 5) {
+            Button(action: open) {
+                HStack(spacing: 8) {
+                    connectionIcon.frame(width: 16)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: title).fontWeight(selected ? .semibold : .regular)
+                        if let subtitle {
+                            Text(verbatim: subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                    if model.unreadChat {
+                        Circle().fill(Color.accentColor)
+                            .frame(width: 5, height: 5)
+                            .accessibilityHidden(true)
                     }
                 }
-                .lineLimit(1)
-                .truncationMode(.middle)
-                Spacer(minLength: 0)
-                if model.unreadChat {
-                    Circle().fill(Color.accentColor)
-                        .frame(width: 5, height: 5)
-                        .accessibilityHidden(true)
-                }
-                if selected {
-                    Image(systemName: "checkmark")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tint)
-                        .accessibilityHidden(true)
-                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
             }
-            .frame(minHeight: 22)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .help(subtitle.map { "\(title) · \($0)" } ?? title)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityValue(status)
+            if audio.voice != nil && !model.reconnecting {
+                ConnectionAudioActions(audio: audio)
+            }
         }
-        .buttonStyle(.plain)
-        .help(subtitle.map { "\(title) · \($0)" } ?? title)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityValue(status)
+        .frame(minHeight: sidebarRowSize == .small ? 28 : 36)
+        // Match the channel highlight across the disclosure inset and trailing spacing.
+        .padding(.leading, leadingExpansion)
+        .padding(.trailing, 6)
+        .background(selected ? Color.accentColor.opacity(0.14) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 6))
+        .padding(.leading, -leadingExpansion)
+        .padding(.trailing, -6)
     }
 
     @ViewBuilder
@@ -251,6 +324,41 @@ private struct ServerConnectionRow: View {
         return Text(verbatim: "")
     }
 }
+
+private struct ConnectionAudioActions: View {
+    @ObservedObject var audio: VoiceAudio
+    var inMenu = false
+
+    var body: some View {
+        let microphone = audio.microphoneEnabledForTab
+        let output = audio.outputEnabledForTab
+        action(microphone ? "Mute Microphone" : "Enable Microphone", icon: microphone ? "mic" : "mic.slash", enabled: microphone) {
+            Task { await audio.setMicrophone(!microphone) }
+        }
+        action(output ? "Mute Output" : "Enable Output", icon: output ? "speaker.wave.2" : "speaker.slash", enabled: output) {
+            audio.toggleOutput()
+        }
+    }
+
+    @ViewBuilder
+    private func action(_ title: LocalizedStringKey, icon: String, enabled: Bool, perform: @escaping () -> Void) -> some View {
+        if inMenu {
+            Button(title, systemImage: icon, action: perform)
+        } else {
+            Button(action: perform) {
+                Label(title, systemImage: icon)
+                    .labelStyle(.iconOnly)
+                    .font(.caption)
+                    .foregroundStyle(enabled ? Color.secondary : Color.primary)
+                    .frame(width: 20, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .help(Text(title))
+        }
+    }
+}
+
 
 private struct ServerConnectionSheet: View {
     @State var draft: ServerTabs.Connection
