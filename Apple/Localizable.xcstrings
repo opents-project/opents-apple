@@ -4389,6 +4389,16 @@
           }
         }
       }
+    },
+    "Client version": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "客户端版本"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

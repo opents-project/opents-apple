@@ -1,4 +1,4 @@
-// Run explicitly against a server where disposable temporary channels are allowed.
+// Run ignored cases explicitly against an authorized server.
 use opents_core::{
     generate_identity, ChannelChange, ChannelLifetime, ManagedCodec, Session, Snapshot,
 };
@@ -17,6 +17,45 @@ async fn wait_for(session: &Session, matches: impl Fn(&Snapshot) -> bool) -> Sna
     })
     .await
     .expect("server state transition timed out")
+}
+
+#[tokio::test]
+#[ignore = "publishes synthetic OpenTS metadata to two peers on OPENTS_TEST_SERVER"]
+async fn peers_observe_each_others_app_version() {
+    let address = std::env::var("OPENTS_TEST_SERVER").expect("specify authorized test server");
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let first_name = format!("OTS-meta-A-{nonce}");
+    let second_name = format!("OTS-meta-B-{nonce}");
+    let first_version = "0.1.0-qa.1";
+    let second_version = "0.1.0-qa.2";
+    let first = Session::new(
+        address.clone(),
+        first_name.clone(),
+        generate_identity(),
+        Some(first_version.into()),
+    );
+    let second = Session::new(
+        address,
+        second_name.clone(),
+        generate_identity(),
+        Some(second_version.into()),
+    );
+    let sees = |snapshot: &Snapshot, name: &str, version: &str| {
+        snapshot.rooms.iter().any(|room| {
+            room.member_details.iter().any(|member| {
+                !member.is_self
+                    && member.name == name
+                    && member.opents_version.as_deref() == Some(version)
+            })
+        })
+    };
+    wait_for(&first, |s| sees(s, &second_name, second_version)).await;
+    wait_for(&second, |s| sees(s, &first_name, first_version)).await;
+    first.disconnect();
+    second.disconnect();
 }
 
 async fn verify_description(session: &Session, channel: u64, expected: &str) {
@@ -46,8 +85,9 @@ async fn create_edit_and_verify_password() {
         address.clone(),
         "OpenTS Channel QA".into(),
         generate_identity(),
+        None,
     );
-    let peer = Session::new(address, "OpenTS Join QA".into(), generate_identity());
+    let peer = Session::new(address, "OpenTS Join QA".into(), generate_identity(), None);
     let original = wait_for(&owner, |s| s.current_channel.is_some()).await;
     wait_for(&peer, |s| s.current_channel.is_some()).await;
     let mut random = [0u8; 16];

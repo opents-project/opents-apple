@@ -1547,6 +1547,8 @@ dependencies = [
  "audiopus",
  "base64 0.22.1",
  "futures",
+ "serde",
+ "serde_json",
  "sha-1",
  "simple_asn1",
  "tokio",

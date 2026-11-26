@@ -187,6 +187,9 @@ struct ServerMemberDetails: View {
                 if let away = member.awayMessage {
                     LabeledContent("Away") { Text(verbatim: away.isEmpty ? "—" : away) }
                 }
+                if let version = member.opentsVersion {
+                    LabeledContent("Client version", value: "OpenTS \(version)")
+                }
             }
             Section("Groups") {
                 LabeledContent("Server groups") {

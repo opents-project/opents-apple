@@ -1,3 +1,4 @@
+mod app_metadata;
 mod channel_management;
 mod chat;
 pub use channel_management::{ChannelChange, ChannelLifetime, ManagedCodec};
@@ -45,6 +46,7 @@ pub struct RoomMember {
     pub away_message: Option<String>,
     pub server_groups: Vec<ListedGroup>,
     pub channel_group: Option<ListedGroup>,
+    pub opents_version: Option<String>,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -114,7 +116,12 @@ pub struct Session {
 #[uniffi::export]
 impl Session {
     #[uniffi::constructor]
-    pub fn new(address: String, nickname: String, identity: String) -> Arc<Self> {
+    pub fn new(
+        address: String,
+        nickname: String,
+        identity: String,
+        app_version: Option<String>,
+    ) -> Arc<Self> {
         let state = Arc::new(Mutex::new(Snapshot::default()));
         let worker = state.clone();
         let io = Voice::pair();
@@ -138,6 +145,7 @@ impl Session {
                         address,
                         nickname,
                         identity,
+                        app_version,
                         closed,
                         requests,
                         changes,
@@ -333,6 +341,7 @@ async fn run(
     address: String,
     nickname: String,
     identity: String,
+    app_version: Option<String>,
     mut closed: oneshot::Receiver<()>,
     mut requests: mpsc::Receiver<JoinRequest>,
     mut changes: mpsc::Receiver<channel_management::Request>,
@@ -515,6 +524,13 @@ async fn run(
         };
         match event {
             StreamItem::MessageEvent(InMessage::ChannelListFinished(_)) => {
+                if !ready {
+                    if let Some(command) =
+                        app_version.as_deref().and_then(app_metadata::announcement)
+                    {
+                        let _ = command.send(&mut con);
+                    }
+                }
                 ready = true;
                 let server = &con.get_state().map_err(|e| e.to_string())?.server;
                 // The handshake key and virtual server ID are independent of its address and name.
@@ -692,6 +708,7 @@ async fn run(
                         |group| group.name.clone(),
                     ),
                 }),
+                opents_version: app_metadata::version(&client.metadata),
             });
         }
         for names in members.values_mut() {

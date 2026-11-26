@@ -121,7 +121,8 @@ final class ServerModel: ObservableObject {
         do { identity = try IdentityStore().forConnection(selectedUID: selectedIdentityUID) }
         catch { self.error = error.localizedDescription; return }
         let destination = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        let connection = Session(address: destination, nickname: nickname, identity: identity)
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let connection = Session(address: destination, nickname: nickname, identity: identity, appVersion: appVersion)
         session = connection
         active = true
         observer = Task { [weak self] in
