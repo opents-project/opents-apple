@@ -56,6 +56,7 @@ final class ServerModel: ObservableObject {
     private(set) var generation: UInt64 = 0
     let audio = VoiceAudio()
     private let cues = ChannelSounds()
+    var fileSession: Session? { session }
     private var session: Session?
     private var observer: Task<Void, Never>?
 

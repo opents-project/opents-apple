@@ -1550,6 +1550,7 @@ dependencies = [
  "sha-1",
  "simple_asn1",
  "tokio",
+ "ts-bookkeeping",
  "tsclientlib",
  "tsproto-packets",
  "tsproto-types",

@@ -220,6 +220,7 @@ struct ConnectedServerView: View {
                         }
                     } header: { Text("Visible members (\(room.members.count))") }
                 }
+                ChannelFilesButton(model: model, room: room).id(room.id)
                 DisclosureGroup("Channel info") {
                     LabeledContent("Audio codec", value: room.codec.replacingOccurrences(of: "Opus", with: "Opus "))
                     if !room.audioSupported { Label("Audio unavailable for this codec", systemImage: "speaker.slash") }

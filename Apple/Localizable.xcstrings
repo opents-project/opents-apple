@@ -1,6 +1,26 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Channel files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道文件"
+          }
+        }
+      }
+    },
+    "Upload file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传文件"
+          }
+        }
+      }
+    },
     "Remove permission?": {
       "localizations": {
         "zh-Hans": {

@@ -1,6 +1,8 @@
 mod channel_management;
 mod chat;
 pub use channel_management::{ChannelChange, ChannelLifetime, ManagedCodec};
+mod files;
+pub use files::{ChannelFileJob, ChannelFileResult, RemoteChannelFile};
 mod identity;
 pub use identity::{parse_identity_export, stored_identity_uid, ImportedIdentity};
 mod group_management;
@@ -97,6 +99,7 @@ pub struct Session {
     inbox: Arc<Mutex<chat::Inbox>>,
     messages: mpsc::Sender<chat::SendRequest>,
     group_requests: mpsc::Sender<group_management::Request>,
+    file_requests: mpsc::Sender<files::Request>,
     joins: mpsc::Sender<JoinRequest>,
     channel_changes: mpsc::Sender<channel_management::Request>,
     stop: Mutex<Option<oneshot::Sender<()>>>,
@@ -116,6 +119,7 @@ impl Session {
         let (messages, chat_requests) = mpsc::channel(1);
         let (channel_changes, changes) = mpsc::channel(1);
         let (group_requests, group_receiver) = mpsc::channel(1);
+        let (file_requests, file_rx) = mpsc::channel(4);
         let (joins, requests) = mpsc::channel(1);
         let (stop, closed) = oneshot::channel();
         std::thread::spawn(move || {
@@ -133,6 +137,7 @@ impl Session {
                         changes,
                         chat_requests,
                         group_receiver,
+                        file_rx,
                         &worker_inbox,
                         io,
                         &current_voice,
@@ -152,10 +157,20 @@ impl Session {
             inbox,
             messages,
             group_requests,
+            file_requests,
             joins,
             channel_changes,
             stop: Mutex::new(Some(stop)),
         })
+    }
+
+    pub fn channel_file_job(&self, channel: u64, password: String) -> Arc<ChannelFileJob> {
+        files::job(
+            channel,
+            password,
+            self.state.lock().unwrap().audio_generation,
+            self.file_requests.clone(),
+        )
     }
 
     pub fn audio(&self) -> Arc<Voice> {
@@ -317,6 +332,7 @@ async fn run(
     mut changes: mpsc::Receiver<channel_management::Request>,
     mut chat_requests: mpsc::Receiver<chat::SendRequest>,
     mut group_receiver: mpsc::Receiver<group_management::Request>,
+    mut file_rx: mpsc::Receiver<files::Request>,
     inbox: &Mutex<chat::Inbox>,
     mut io: voice::AudioIo,
     current_voice: &Mutex<Arc<Voice>>,
@@ -334,6 +350,7 @@ async fn run(
         .map_err(|e| e.to_string())?;
     let deadline = tokio::time::sleep(CONNECTION_TIMEOUT);
     tokio::pin!(deadline);
+    let mut files = files::Worker::default();
     let mut last_codec = None;
     let end_talk = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(end_talk);
@@ -476,12 +493,20 @@ async fn run(
                 }
                 continue;
             }
+            Some(request) = file_rx.recv() => {
+                files.start(request, &mut con, ready, audio_generation);
+                continue;
+            }
+            _ = files.poll() => continue,
             event = async { con.events().next().await } => event,
         };
-        match event
+        let event = event
             .ok_or("Connection closed")?
-            .map_err(|e| e.to_string())?
-        {
+            .map_err(|e| e.to_string())?;
+        let Some(event) = files.observe(event) else {
+            continue;
+        };
+        match event {
             StreamItem::MessageEvent(InMessage::ChannelListFinished(_)) => {
                 ready = true;
                 let subscription = con
@@ -598,6 +623,7 @@ async fn run(
                 });
             }
             StreamItem::DisconnectedTemporarily(_) => {
+                files.disconnected();
                 if ready {
                     deadline
                         .as_mut()
