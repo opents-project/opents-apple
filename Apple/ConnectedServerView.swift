@@ -639,8 +639,17 @@ struct ConnectedServerView: View {
     #endif
 
     @ViewBuilder private var channelDetail: some View {
-        if let result = selectedMember {
-            ServerMemberDetails(member: result.member, channel: result.room.name)
+        if case .member(let target)? = selection, let result = findMember(target) {
+            let inheritedSource = inheritedGroupSource(for: result.member, in: result.room)
+            let canRequestDetails = tabSelected && model.groupPermissionSession != nil && target.databaseID != 0
+            ServerMemberDetails(member: result.member, channel: result.room.name, inheritedGroupSource: inheritedSource)
+                .id(target)
+                .task(id: canRequestDetails ? target : nil) {
+                    guard canRequestDetails, !Task.isCancelled, selection == .member(target),
+                          findMember(target) != nil, let session = model.groupPermissionSession else { return }
+                    session.requestMemberDetails(clientId: target.clientID, databaseId: target.databaseID,
+                                                 generation: target.generation)
+                }
         } else if let room = selectedRoom {
             Form {
                 if model.currentChannel == room.id {
@@ -660,6 +669,11 @@ struct ConnectedServerView: View {
         } else {
             ContentUnavailableView("Select a channel", systemImage: "bubble.left.and.bubble.right")
         }
+    }
+
+    private func inheritedGroupSource(for member: RoomMember, in room: Room) -> String? {
+        guard member.channelGroup != nil, let source = member.inheritedChannelGroupFrom, source != 0, source != room.id else { return nil }
+        return model.room(source)?.name ?? "#\(source)"
     }
 
     private var selectedRoom: Room? {

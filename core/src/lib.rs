@@ -28,7 +28,7 @@ pub fn generate_identity() -> String {
 }
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tsclientlib::prelude::*;
 use tsclientlib::{Connection, DisconnectOptions, InMessage, StreamItem};
 use tsproto_packets::packets::{AudioData, CodecType, OutAudio};
@@ -46,7 +46,15 @@ pub struct RoomMember {
     pub away_message: Option<String>,
     pub server_groups: Vec<ListedGroup>,
     pub channel_group: Option<ListedGroup>,
+    pub client_version: Option<String>,
     pub opents_version: Option<String>,
+    pub client_platform: Option<String>,
+    pub connected_seconds: Option<u64>,
+    pub inherited_channel_group_from: Option<u64>,
+    pub microphone_enabled: bool,
+    pub microphone_muted: bool,
+    pub output_enabled: bool,
+    pub output_muted: bool,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -100,6 +108,31 @@ struct JoinRequest {
     reply: oneshot::Sender<Option<JoinFailure>>,
 }
 
+#[derive(Clone, Copy)]
+struct MemberDetailsRequest {
+    client_id: u16,
+    database_id: u64,
+    generation: u64,
+}
+
+impl MemberDetailsRequest {
+    fn send(self, con: &mut Connection) {
+        let Ok(book) = con.get_state() else { return };
+        let Some(client) = book
+            .clients
+            .get(&tsclientlib::ClientId(self.client_id))
+            .filter(|c| c.database_id.0 == self.database_id)
+        else {
+            return;
+        };
+        let variables = client.variables();
+        let connection_info = client.connection_info();
+        // The book records whichever details the server makes available.
+        let _ = variables.send(con);
+        let _ = connection_info.send(con);
+    }
+}
+
 #[derive(uniffi::Object)]
 pub struct Session {
     state: Arc<Mutex<Snapshot>>,
@@ -107,6 +140,7 @@ pub struct Session {
     inbox: Arc<Mutex<chat::Inbox>>,
     messages: mpsc::Sender<chat::SendRequest>,
     group_requests: mpsc::Sender<group_management::Request>,
+    member_details: watch::Sender<Option<MemberDetailsRequest>>,
     file_requests: mpsc::Sender<files::Request>,
     joins: mpsc::Sender<JoinRequest>,
     channel_changes: mpsc::Sender<channel_management::Request>,
@@ -132,6 +166,7 @@ impl Session {
         let (messages, chat_requests) = mpsc::channel(1);
         let (channel_changes, changes) = mpsc::channel(1);
         let (group_requests, group_receiver) = mpsc::channel(1);
+        let (member_details, member_details_rx) = watch::channel(None);
         let (file_requests, file_rx) = mpsc::channel(4);
         let (joins, requests) = mpsc::channel(1);
         let (stop, closed) = oneshot::channel();
@@ -151,6 +186,7 @@ impl Session {
                         changes,
                         chat_requests,
                         group_receiver,
+                        member_details_rx,
                         file_rx,
                         &worker_inbox,
                         io,
@@ -171,6 +207,7 @@ impl Session {
             inbox,
             messages,
             group_requests,
+            member_details,
             file_requests,
             joins,
             channel_changes,
@@ -193,6 +230,17 @@ impl Session {
 
     pub fn snapshot(&self) -> Snapshot {
         self.state.lock().unwrap().clone()
+    }
+
+    pub fn request_member_details(&self, client_id: u16, database_id: u64, generation: u64) {
+        if client_id != 0 && database_id != 0 {
+            // Keep the newest selection if several arrive before the worker can send.
+            self.member_details.send_replace(Some(MemberDetailsRequest {
+                client_id,
+                database_id,
+                generation,
+            }));
+        }
     }
 
     pub fn take_chat(&self) -> Vec<ChatLine> {
@@ -347,6 +395,7 @@ async fn run(
     mut changes: mpsc::Receiver<channel_management::Request>,
     mut chat_requests: mpsc::Receiver<chat::SendRequest>,
     mut group_receiver: mpsc::Receiver<group_management::Request>,
+    mut member_details_rx: watch::Receiver<Option<MemberDetailsRequest>>,
     mut file_rx: mpsc::Receiver<files::Request>,
     inbox: &Mutex<chat::Inbox>,
     mut io: voice::AudioIo,
@@ -448,6 +497,13 @@ async fn run(
                 group_management::Pending::start(request, &mut con, ready, audio_generation, &mut pending_group);
                 if idle {
                     group_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(10));
+                }
+                continue;
+            }
+            Ok(()) = member_details_rx.changed() => {
+                let request = *member_details_rx.borrow_and_update();
+                if let Some(request) = request.filter(|r| ready && r.generation == audio_generation) {
+                    request.send(&mut con);
                 }
                 continue;
             }
@@ -696,6 +752,7 @@ async fn run(
                 .collect();
             server_groups.sort_unstable_by_key(|group| group.id);
             let channel_group = client.channel_group;
+            let inherited_from = client.inherited_channel_group_from_channel.0;
             members.entry(client.channel).or_default().push(RoomMember {
                 client_id: client.id.0,
                 database_id: client.database_id.0,
@@ -712,7 +769,32 @@ async fn run(
                         |group| group.name.clone(),
                     ),
                 }),
+                client_version: client
+                    .optional_data
+                    .as_ref()
+                    .map(|data| &data.version)
+                    .filter(|value| !value.trim().is_empty())
+                    .cloned(),
                 opents_version: app_metadata::version(&client.metadata),
+                client_platform: client
+                    .optional_data
+                    .as_ref()
+                    .map(|data| &data.platform)
+                    .filter(|value| !value.trim().is_empty())
+                    .cloned(),
+                connected_seconds: client
+                    .connection_data
+                    .as_ref()
+                    .and_then(|data| data.connected_time)
+                    .filter(|duration| !duration.is_negative())
+                    .map(|duration| duration.whole_seconds() as u64),
+                inherited_channel_group_from: (inherited_from != 0
+                    && inherited_from != client.channel.0)
+                    .then_some(inherited_from),
+                microphone_enabled: client.input_hardware_enabled,
+                microphone_muted: client.input_muted,
+                output_enabled: client.output_hardware_enabled,
+                output_muted: client.output_muted || client.output_only_muted,
             });
         }
         for names in members.values_mut() {

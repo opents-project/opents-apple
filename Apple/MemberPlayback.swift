@@ -174,6 +174,7 @@ struct MemberPlaybackSettings: View {
 struct ServerMemberDetails: View {
     let member: RoomMember
     let channel: String
+    let inheritedGroupSource: String?
 
     var body: some View {
         Form {
@@ -187,9 +188,18 @@ struct ServerMemberDetails: View {
                 if let away = member.awayMessage {
                     LabeledContent("Away") { Text(verbatim: away.isEmpty ? "—" : away) }
                 }
-                if let version = member.opentsVersion {
-                    LabeledContent("Client version", value: "OpenTS \(version)")
+                let clientVersion = member.opentsVersion.map { "OpenTS \($0)" } ?? member.clientVersion
+                if let version = clientVersion, !version.isEmpty {
+                    LabeledContent("Client version", value: version)
                 }
+                if let platform = member.clientPlatform, !platform.isEmpty {
+                    LabeledContent("Platform", value: platform == "OS X" ? "macOS" : platform)
+                }
+                if let seconds = member.connectedSeconds {
+                    LabeledContent("Online duration") { MemberOnlineDuration(seconds: seconds) }
+                }
+                audioStatus("Microphone status", enabled: member.microphoneEnabled, muted: member.microphoneMuted)
+                audioStatus("Speakers / headphones", enabled: member.outputEnabled, muted: member.outputMuted)
             }
             Section("Groups") {
                 LabeledContent("Server groups") {
@@ -197,9 +207,34 @@ struct ServerMemberDetails: View {
                     Text(verbatim: names.isEmpty ? "—" : names.joined(separator: ", "))
                 }
                 LabeledContent("Channel group") { Text(verbatim: member.channelGroup?.name ?? "—") }
+                if let inheritedGroupSource {
+                    LabeledContent("Inherited from", value: inheritedGroupSource)
+                }
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func audioStatus(_ title: LocalizedStringKey, enabled: Bool, muted: Bool) -> some View {
+        LabeledContent(title) {
+            if !enabled { Text("Disabled") }
+            else if muted { Text("Muted") }
+            else { Text("Enabled") }
+        }
+    }
+}
+
+private struct MemberOnlineDuration: View {
+    let seconds: UInt64
+    @State private var receivedAt = ContinuousClock.now
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let duration = Duration.seconds(seconds) + receivedAt.duration(to: .now)
+            Text(duration, format: .units(allowed: [.days, .hours, .minutes, .seconds]))
+                .monospacedDigit()
+        }
+        .onChange(of: seconds) { _, _ in receivedAt = .now }
     }
 }
 
