@@ -45,18 +45,18 @@ jobs:
       - name: Build macOS Release
         run: |
           set -euo pipefail
-          version_arguments=()
+          set --
           if [[ -n "$RELEASE_TAG" ]]; then
             if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo 'Release tags must have the form vMAJOR.MINOR.PATCH.' >&2
               exit 1
             fi
-            version_arguments=(MARKETING_VERSION="${RELEASE_TAG#v}" CURRENT_PROJECT_VERSION="$(git rev-list --count HEAD)")
+            set -- MARKETING_VERSION="${RELEASE_TAG#v}" CURRENT_PROJECT_VERSION="$(git rev-list --count HEAD)"
           fi
           ./scripts/build-apple-core.sh --macos-release
           xcodebuild -quiet -project OpenTS.xcodeproj -scheme OpenTS-macOS \
             -configuration Release -destination 'platform=macOS,arch=arm64' \
-            -derivedDataPath build/ReleaseBuild ARCHS=arm64 CODE_SIGNING_ALLOWED=NO "${version_arguments[@]}" build
+            -derivedDataPath build/ReleaseBuild ARCHS=arm64 CODE_SIGNING_ALLOWED=NO "$@" build
           ditto -c -k --keepParent build/ReleaseBuild/Build/Products/Release/OpenTS.app "$RUNNER_TEMP/unsigned.zip"
       - uses: actions/upload-artifact@v4
         with:
