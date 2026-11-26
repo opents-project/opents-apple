@@ -45,6 +45,7 @@ final class ServerModel: ObservableObject {
     }
     @Published private(set) var identityUID = ""
     @Published private(set) var server = ""
+    @Published private(set) var channelTreeServerKey: String?
     @Published private(set) var channels: [ChannelNode] = []
     @Published private(set) var error: String?
     @Published private(set) var active = false
@@ -56,12 +57,29 @@ final class ServerModel: ObservableObject {
     private(set) var generation: UInt64 = 0
     let audio = VoiceAudio()
     private let cues = ChannelSounds()
+    private let channelTreeDefaults: UserDefaults
+    private static let channelExpansionKeyPrefix = "channelTreeExpansion.v1."
     var fileSession: Session? { session }
     private var session: Session?
     private var observer: Task<Void, Never>?
 
     var groupPermissionSession: Session? { reconnecting || server.isEmpty ? nil : session }
     var groupPermissionGeneration: UInt64 { generation }
+
+    init(channelTreeDefaults: UserDefaults = .standard) {
+        self.channelTreeDefaults = channelTreeDefaults
+    }
+
+    func savedChannelExpansion(for serverKey: String) -> Set<UInt64>? {
+        guard let data = channelTreeDefaults.data(forKey: Self.channelExpansionKeyPrefix + serverKey),
+              let ids = try? JSONDecoder().decode([UInt64].self, from: data) else { return nil }
+        return Set(ids)
+    }
+
+    func saveChannelExpansion(_ ids: Set<UInt64>, for serverKey: String) {
+        guard let data = try? JSONEncoder().encode(ids.sorted()) else { return }
+        channelTreeDefaults.set(data, forKey: Self.channelExpansionKeyPrefix + serverKey)
+    }
 
     func connect() {
         guard !active else { return }
@@ -126,6 +144,7 @@ final class ServerModel: ObservableObject {
         // Keep the last confirmed channel tree on screen during the retry window.
         if !update.reconnecting && !update.server.isEmpty {
             server = update.server
+            if channelTreeServerKey != update.serverKey { channelTreeServerKey = update.serverKey }
             identityUID = update.identityUid
             currentChannel = update.currentChannel
             if update.rooms != previous?.rooms { channels = ChannelNode.tree(update.rooms) }
@@ -198,6 +217,7 @@ final class ServerModel: ObservableObject {
         active = false
         reconnecting = false
         server = ""
+        channelTreeServerKey = nil
         channels = []
     }
 }

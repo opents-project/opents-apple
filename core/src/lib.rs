@@ -64,6 +64,7 @@ pub struct Room {
 #[derive(Clone, Default, uniffi::Record)]
 pub struct Snapshot {
     pub server: String,
+    pub server_key: Option<String>,
     pub reconnecting: bool,
     pub audio_generation: u64,
     pub rooms: Vec<Room>,
@@ -357,6 +358,7 @@ async fn run(
     let end_talk = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(end_talk);
     let mut ready = false;
+    let mut server_key = None;
     let mut audio_generation = 0;
     let mut pending_group: Option<group_management::Pending> = None;
     let group_deadline = tokio::time::sleep(Duration::ZERO);
@@ -511,11 +513,10 @@ async fn run(
         match event {
             StreamItem::MessageEvent(InMessage::ChannelListFinished(_)) => {
                 ready = true;
-                let subscription = con
-                    .get_state()
-                    .map_err(|e| e.to_string())?
-                    .server
-                    .set_subscribed(true);
+                let server = &con.get_state().map_err(|e| e.to_string())?.server;
+                // The handshake key and virtual server ID are independent of its address and name.
+                server_key = Some(format!("ts3:{}:{}", server.public_key.get_uid(), server.id));
+                let subscription = server.set_subscribed(true);
                 subscription.send(&mut con).map_err(|e| e.to_string())?;
             }
             StreamItem::MessageEvent(
@@ -646,6 +647,7 @@ async fn run(
                 io = replace_audio(&io, current_voice);
                 audio_generation += 1;
                 *state.lock().unwrap() = Snapshot {
+                    server_key: server_key.clone(),
                     reconnecting: true,
                     audio_generation,
                     ..Default::default()
@@ -705,6 +707,7 @@ async fn run(
         peer_ids.sort_unstable();
         *state.lock().unwrap() = Snapshot {
             server: book.server.name.clone(),
+            server_key: server_key.clone(),
             identity_uid: identity_uid.clone(),
             reconnecting: false,
             audio_generation,

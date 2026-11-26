@@ -3,7 +3,11 @@ import SwiftUI
 struct ConnectedServerView: View {
     @ObservedObject var model: ServerModel
     @State private var selection: UInt64?
-    @State private var expanded: Set<UInt64> = []
+    @State private var expansionServerKey: String?
+    @State private var savedExpansion: Set<UInt64> = []
+    @State private var revealedAncestors: Set<UInt64> = []
+    @State private var confirmedChannel: UInt64?
+    @State private var scrollRequest: ChannelScrollRequest?
     @State private var compactColumn = Self.startsInChannelList
         ? NavigationSplitViewColumn.sidebar : .detail
     @State private var columns = NavigationSplitViewVisibility.all
@@ -19,7 +23,6 @@ struct ConnectedServerView: View {
     @AppStorage(ChannelTreeDensity.storageKey) private var channelTreeDensity = ChannelTreeDensity.standard
     private static let toolbarButtonSize: CGFloat = 24
     #endif
-    @State private var revealRequest = 0
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var widthClass
     #endif
@@ -33,8 +36,15 @@ struct ConnectedServerView: View {
     }
 
     private struct Location: Equatable {
-        let channel: UInt64?
+        let serverKey: String?
+        let path: [UInt64]?
         let retrying: Bool
+    }
+
+    private struct ChannelScrollRequest: Equatable {
+        let serverKey: String?
+        let channel: UInt64
+        let nonce = UUID()
     }
 
     var body: some View {
@@ -75,16 +85,8 @@ struct ConnectedServerView: View {
                 VoiceControls(model: model, audio: model.audio, compact: narrow, revealChannel: revealCurrent)
             }
         }
-        .onChange(of: Location(channel: model.currentChannel, retrying: model.reconnecting), initial: true) { old, new in
-            guard !new.retrying, let id = new.channel else { return }
-            if Self.startsInChannelList, compactColumn == .sidebar {
-                if let path = ChannelNode.path(to: id, in: model.channels) {
-                    expanded.formUnion(path.dropLast())
-                }
-                return
-            }
-            if old.retrying, selection != old.channel, selectedRoom != nil { return }
-            if selection == nil || old.channel != id { locate(id) }
+        .onChange(of: location, initial: true) { old, new in
+            updateLocation(new, followingReconnect: old.retrying)
         }
         #if os(macOS)
         .task(id: model.reconnecting) {
@@ -138,10 +140,10 @@ struct ConnectedServerView: View {
                     Label("Reconnected", systemImage: "checkmark.circle")
                         .foregroundStyle(.secondary)
                 }
-                ChannelRows(nodes: model.channels, current: model.currentChannel, expanded: $expanded)
+                ChannelRows(nodes: model.channels, current: model.currentChannel, expanded: channelExpansion)
                 #else
                 Section {
-                    ChannelRows(nodes: model.channels, current: model.currentChannel, expanded: $expanded)
+                    ChannelRows(nodes: model.channels, current: model.currentChannel, expanded: channelExpansion)
                 } header: { serverStatus }
                 #endif
             }
@@ -156,11 +158,14 @@ struct ConnectedServerView: View {
                 if let id = ids.first, let room = model.room(id) { requestJoin(room) }
             }
             #endif
-            .task(id: revealRequest) {
-                guard let id = selection else { return }
+            .task(id: scrollRequest) {
+                guard let request = scrollRequest else { return }
                 await Task.yield()
-                guard !Task.isCancelled else { return }
-                proxy.scrollTo(id, anchor: .center)
+                guard !Task.isCancelled, request == scrollRequest, !model.reconnecting,
+                      request.serverKey == model.channelTreeServerKey,
+                      let path = ChannelNode.path(to: request.channel, in: model.channels),
+                      path.dropLast().allSatisfy(expanded.contains) else { return }
+                proxy.scrollTo(request.channel, anchor: .center)
             }
         }
     }
@@ -189,6 +194,7 @@ struct ConnectedServerView: View {
             #endif
             Menu {
                 Button("Show current channel", systemImage: "person.wave.2", action: revealCurrent)
+                channelExpansionActions
                 Section {
                     Button("Create channel", systemImage: "plus") {
                         editorTarget = ChannelEditorTarget(parent: 0, room: nil, generation: model.generation)
@@ -268,11 +274,84 @@ struct ConnectedServerView: View {
 
     private var selectedRoom: Room? { selection.flatMap(model.room) }
 
-    private func locate(_ id: UInt64) {
+    private var location: Location {
+        Location(
+            serverKey: model.channelTreeServerKey,
+            path: model.currentChannel.flatMap { ChannelNode.path(to: $0, in: model.channels) },
+            retrying: model.reconnecting
+        )
+    }
+
+    private var expanded: Set<UInt64> { savedExpansion.union(revealedAncestors) }
+
+    private var channelExpansion: Binding<Set<UInt64>> {
+        let key = expansionServerKey
+        return Binding(get: { expanded }, set: { next in
+            guard key == expansionServerKey, key == model.channelTreeServerKey else { return }
+            let previous = expanded
+            guard next != previous else { return }
+            let closed = previous.subtracting(next).filter { model.room($0) != nil }
+            savedExpansion.formUnion(next.subtracting(previous))
+            savedExpansion.subtract(closed)
+            revealedAncestors.subtract(closed)
+            saveExpansion(for: key)
+        })
+    }
+
+    private var channelExpansionActions: some View {
+        let key = expansionServerKey
+        return Section {
+            Button("Expand All Channels", systemImage: "chevron.down") {
+                guard key == expansionServerKey, key == model.channelTreeServerKey else { return }
+                var branches = Set<UInt64>()
+                func expand(_ nodes: [ChannelNode]) {
+                    for node in nodes {
+                        if let children = node.children {
+                            branches.insert(node.id)
+                            expand(children)
+                        }
+                    }
+                }
+                expand(model.channels)
+                savedExpansion.formUnion(branches)
+                saveExpansion(for: key)
+            }
+            Button("Collapse All Channels", systemImage: "chevron.up") {
+                guard key == expansionServerKey, key == model.channelTreeServerKey else { return }
+                savedExpansion.removeAll()
+                revealedAncestors.removeAll()
+                scrollRequest = nil
+                saveExpansion(for: key)
+            }
+        }
+    }
+
+    private func saveExpansion(for key: String?) {
+        if let key { model.saveChannelExpansion(savedExpansion, for: key) }
+    }
+
+    private func updateLocation(_ location: Location, followingReconnect: Bool) {
+        guard !location.retrying else { return }
+        if expansionServerKey != location.serverKey {
+            expansionServerKey = location.serverKey
+            savedExpansion = location.serverKey.flatMap { model.savedChannelExpansion(for: $0) } ?? []
+            revealedAncestors = []
+            confirmedChannel = nil
+            scrollRequest = nil
+        }
+        guard let path = location.path, let id = path.last, id != confirmedChannel else { return }
+        let previous = confirmedChannel
+        confirmedChannel = id
+        let keepBrowsing = followingReconnect && previous != nil && selection != previous && selectedRoom != nil
+        let showingPhoneSidebar = Self.startsInChannelList && compactColumn == .sidebar
+        locate(id, select: !keepBrowsing && !showingPhoneSidebar)
+    }
+
+    private func locate(_ id: UInt64, select: Bool = true) {
         guard let path = ChannelNode.path(to: id, in: model.channels) else { return }
-        expanded.formUnion(path.dropLast())
-        selection = id
-        revealRequest += 1
+        revealedAncestors.formUnion(path.dropLast())
+        if select { selection = id }
+        scrollRequest = ChannelScrollRequest(serverKey: expansionServerKey, channel: id)
     }
 
     private func revealCurrent() {

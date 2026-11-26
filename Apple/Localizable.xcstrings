@@ -1,6 +1,26 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Expand All Channels": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "展开所有频道"
+          }
+        }
+      }
+    },
+    "Collapse All Channels": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "折叠所有频道"
+          }
+        }
+      }
+    },
     "Compact Channel Spacing": {
       "localizations": {
         "zh-Hans": {
