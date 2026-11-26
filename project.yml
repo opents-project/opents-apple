@@ -34,6 +34,12 @@ targets:
   OpenTS-iOS:
     templates: [Client]
     platform: iOS
+    info:
+      path: Config/iOS-Info.plist
+      properties:
+        UIBackgroundModes: [audio]
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
     settings:
       base:
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "OpenTS uses your local network to connect to the TeamSpeak server you choose on that network."

@@ -19,6 +19,10 @@ final class VoiceAudio: ObservableObject {
     private var playbackPump: VoicePlaybackPump?
     private(set) var playbackMeter = PlaybackQueueMeter()
     private var observer: NSObjectProtocol?
+    #if os(iOS)
+    private var sessionObservers: [NSObjectProtocol] = []
+    private var interruptedSettings: (mic: Bool, play: Bool)?
+    #endif
     private var installedTap = false
     private let gate = CaptureGate()
     private let stereo = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
@@ -29,6 +33,9 @@ final class VoiceAudio: ObservableObject {
         #if os(macOS)
         deviceMonitor = MacDeviceMonitor { [weak self] in self?.refreshDevices() }
         devices.inventory = MacAudioHardware.inventory()
+        #endif
+        #if os(iOS)
+        observeSession()
         #endif
         configure(mic: false, play: true)
     }
@@ -141,6 +148,11 @@ final class VoiceAudio: ObservableObject {
         #if os(macOS)
         deviceMonitor = nil
         #endif
+        #if os(iOS)
+        sessionObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        sessionObservers.removeAll()
+        interruptedSettings = nil
+        #endif
         stopEngine()
         voice = nil
         message = nil
@@ -148,6 +160,43 @@ final class VoiceAudio: ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
     }
+
+    #if os(iOS)
+    private func observeSession() {
+        guard let observedVoice = voice else { return }
+        let center = NotificationCenter.default
+        sessionObservers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
+            let type = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let options = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            Task { @MainActor in
+                guard let self, self.voice === observedVoice else { return }
+                if type == AVAudioSession.InterruptionType.began.rawValue {
+                    guard self.interruptedSettings == nil else { return }
+                    self.interruptedSettings = (self.microphone, self.output)
+                    self.stopEngine()
+                    self.message = String(localized: "Audio interrupted.")
+                } else if type == AVAudioSession.InterruptionType.ended.rawValue,
+                          let settings = self.interruptedSettings {
+                    self.interruptedSettings = nil
+                    if AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume) {
+                        self.configure(mic: settings.mic, play: settings.play)
+                    } else {
+                        self.message = String(localized: "Audio interrupted. Reconnect to resume audio.")
+                    }
+                }
+            }
+        })
+        sessionObservers.append(center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
+            let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            guard reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue ||
+                  reason == AVAudioSession.RouteChangeReason.newDeviceAvailable.rawValue else { return }
+            Task { @MainActor in
+                guard let self, self.voice === observedVoice, self.interruptedSettings == nil, self.engine != nil else { return }
+                self.configure(mic: self.microphone, play: self.output)
+            }
+        })
+    }
+    #endif
 
     private func stopEngine() {
         press(false)
