@@ -16,6 +16,7 @@ struct ConnectedServerView: View {
     @State private var password = ""
     #if os(macOS)
     @State private var showRecovery = false
+    @AppStorage(ChannelTreeDensity.storageKey) private var channelTreeDensity = ChannelTreeDensity.standard
     private static let toolbarButtonSize: CGFloat = 24
     #endif
     @State private var revealRequest = 0
@@ -145,6 +146,7 @@ struct ConnectedServerView: View {
                 #endif
             }
             #if os(macOS)
+            .environment(\.sidebarRowSize, channelTreeDensity == .compact ? .small : .medium)
             .contextMenu(forSelectionType: UInt64.self) { ids in
                 if let id = ids.first, let room = model.room(id) {
                     Button("Join Channel") { requestJoin(room) }

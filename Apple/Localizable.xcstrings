@@ -1,6 +1,26 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Compact Channel Spacing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "紧凑频道间距"
+          }
+        }
+      }
+    },
+    "Standard Channel Spacing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标准频道间距"
+          }
+        }
+      }
+    },
     "Check for Updates…": {
       "localizations": {
         "zh-Hans": {

@@ -54,6 +54,14 @@ struct ServerView: View {
     }
 }
 
+#if os(macOS)
+enum ChannelTreeDensity: String {
+    case standard, compact
+
+    static let storageKey = "channelTreeDensity"
+}
+#endif
+
 struct ChannelRows: View {
     let nodes: [ChannelNode]
     let current: UInt64?
@@ -77,7 +85,14 @@ struct ChannelRows: View {
     private func link(_ node: ChannelNode) -> some View {
         NavigationLink(value: node.id) {
             HStack {
-                Label(node.room.name, systemImage: current == node.id ? "person.wave.2.fill" : "bubble.left")
+                Label {
+                    Text(node.room.name)
+                        #if os(macOS)
+                        .font(.body)
+                        #endif
+                } icon: {
+                    Image(systemName: current == node.id ? "person.wave.2.fill" : "bubble.left")
+                }
                 Spacer(minLength: 4)
                 if node.room.subscribed || current == node.id {
                     if !node.room.members.isEmpty {

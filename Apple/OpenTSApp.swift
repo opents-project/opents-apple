@@ -5,6 +5,7 @@ struct OpenTSApp: App {
     @StateObject private var model = ServerModel()
     #if os(macOS)
     @StateObject private var updater = AppUpdater()
+    @AppStorage(ChannelTreeDensity.storageKey) private var channelTreeDensity = ChannelTreeDensity.standard
     #endif
 
     var body: some Scene {
@@ -13,6 +14,12 @@ struct OpenTSApp: App {
         .defaultSize(width: 820, height: 540)
         .commands {
             CommandGroup(after: .appInfo) { UpdateMenuItem(updater: updater) }
+            CommandGroup(after: .sidebar) {
+                Toggle("Standard Channel Spacing", isOn: channelSpacingChoice(.standard))
+                    .keyboardShortcut("=", modifiers: .command)
+                Toggle("Compact Channel Spacing", isOn: channelSpacingChoice(.compact))
+                    .keyboardShortcut("-", modifiers: .command)
+            }
         }
         MenuBarExtra("OpenTS", systemImage: model.server.isEmpty ? "waveform" : "waveform.circle.fill") {
             StatusMenu(model: model, updater: updater)
@@ -21,6 +28,12 @@ struct OpenTSApp: App {
         WindowGroup { ServerView(model: model) }
         #endif
     }
+
+    #if os(macOS)
+    private func channelSpacingChoice(_ choice: ChannelTreeDensity) -> Binding<Bool> {
+        Binding(get: { channelTreeDensity == choice }, set: { _ in channelTreeDensity = choice })
+    }
+    #endif
 }
 
 #if os(macOS)
