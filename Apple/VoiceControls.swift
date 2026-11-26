@@ -85,6 +85,9 @@ struct VoiceControls: View {
     #endif
 
     private var reason: LocalizedStringKey? {
+        #if os(iOS)
+        if audio.audioInterrupted { return "Audio interrupted." }
+        #endif
         if model.reconnecting { return "Reconnecting · talk unavailable" }
         if model.joining { return "Switching channel…" }
         guard let room = model.currentRoom else { return "No current channel" }

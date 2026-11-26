@@ -20,6 +20,7 @@ final class VoiceAudio: ObservableObject {
     private(set) var playbackMeter = PlaybackQueueMeter()
     private var observer: NSObjectProtocol?
     #if os(iOS)
+    @Published private(set) var audioInterrupted = false
     private var sessionObservers: [NSObjectProtocol] = []
     private var interruptedSettings: (mic: Bool, play: Bool)?
     #endif
@@ -53,10 +54,24 @@ final class VoiceAudio: ObservableObject {
             guard voice === original else { return }
             guard allowed else { message = String(localized: "Allow microphone access in System Settings to talk."); return }
         }
+        #if os(iOS)
+        if interruptedSettings != nil {
+            interruptedSettings?.mic = on
+            microphone = on
+            return
+        }
+        #endif
         configure(mic: on, play: output)
     }
 
     func toggleOutput() {
+        #if os(iOS)
+        if interruptedSettings != nil {
+            interruptedSettings?.play.toggle()
+            output = interruptedSettings?.play ?? false
+            return
+        }
+        #endif
         guard let player else { configure(mic: microphone, play: true); return }
         output.toggle()
         #if os(macOS)
@@ -140,8 +155,13 @@ final class VoiceAudio: ObservableObject {
     }
 
     private func updateTransmission() {
-        talking = channelAllowsTransmission && (buttonHeld || shortcutHeld) && microphone && output && !voiceActivated
-        gate.configure(held: talking, threshold: channelAllowsTransmission && voiceActivated && microphone && output ? threshold : nil)
+        #if os(iOS)
+        let available = !audioInterrupted
+        #else
+        let available = true
+        #endif
+        talking = available && channelAllowsTransmission && (buttonHeld || shortcutHeld) && microphone && output && !voiceActivated
+        gate.configure(held: talking, threshold: available && channelAllowsTransmission && voiceActivated && microphone && output ? threshold : nil)
     }
 
     func disconnect() {
@@ -152,6 +172,7 @@ final class VoiceAudio: ObservableObject {
         sessionObservers.forEach { NotificationCenter.default.removeObserver($0) }
         sessionObservers.removeAll()
         interruptedSettings = nil
+        audioInterrupted = false
         #endif
         stopEngine()
         voice = nil
@@ -174,13 +195,19 @@ final class VoiceAudio: ObservableObject {
                     guard self.interruptedSettings == nil else { return }
                     self.interruptedSettings = (self.microphone, self.output)
                     self.stopEngine()
+                    self.audioInterrupted = true
+                    self.microphone = self.interruptedSettings?.mic ?? false
+                    self.output = self.interruptedSettings?.play ?? false
                     self.message = String(localized: "Audio interrupted.")
                 } else if type == AVAudioSession.InterruptionType.ended.rawValue,
                           let settings = self.interruptedSettings {
                     self.interruptedSettings = nil
+                    self.audioInterrupted = false
                     if AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume) {
                         self.configure(mic: settings.mic, play: settings.play)
                     } else {
+                        self.microphone = false
+                        self.output = false
                         self.message = String(localized: "Audio interrupted. Reconnect to resume audio.")
                     }
                 }
