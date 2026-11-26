@@ -16,6 +16,7 @@ struct ConnectedServerView: View {
     @State private var password = ""
     #if os(macOS)
     @State private var showRecovery = false
+    private static let toolbarButtonSize: CGFloat = 24
     #endif
     @State private var revealRequest = 0
     #if os(iOS)
@@ -175,19 +176,14 @@ struct ConnectedServerView: View {
 
     @ToolbarContentBuilder private func actions(closeChatReplacesDetail: Bool) -> some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                showingChat.toggle()
-                compactColumn = !showingChat && selection == nil && Self.startsInChannelList
-                    ? .sidebar : .detail
-            } label: {
-                if showingChat && closeChatReplacesDetail {
-                    Text("Back to channel")
-                } else {
-                    Label(showingChat ? "Close chat" : "Text chat", systemImage: showingChat ? "text.bubble.fill" : "text.bubble")
-                }
-            }
             #if os(macOS)
-            ToolbarDevices(audio: model.audio)
+            HStack(spacing: 0) {
+                chatButton(closeChatReplacesDetail: closeChatReplacesDetail)
+                DeviceButtons(audio: model.audio, minimumSize: Self.toolbarButtonSize)
+            }
+            .labelStyle(.iconOnly)
+            #else
+            chatButton(closeChatReplacesDetail: closeChatReplacesDetail)
             #endif
             Menu {
                 Button("Show current channel", systemImage: "person.wave.2", action: revealCurrent)
@@ -209,6 +205,25 @@ struct ConnectedServerView: View {
                 Button("My Identity", systemImage: "person.text.rectangle") { showingIdentity = true }
                 Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right", action: model.disconnect)
             } label: { Label("More", systemImage: "ellipsis.circle") }
+        }
+    }
+
+    private func chatButton(closeChatReplacesDetail: Bool) -> some View {
+        let returningToChannel = showingChat && closeChatReplacesDetail
+        let title: LocalizedStringKey = returningToChannel ? "Back to channel" : (showingChat ? "Close chat" : "Text chat")
+        let icon = returningToChannel ? "chevron.left" : (showingChat ? "text.bubble.fill" : "text.bubble")
+        return Button {
+            showingChat.toggle()
+            compactColumn = !showingChat && selection == nil && Self.startsInChannelList
+                ? .sidebar : .detail
+        } label: {
+            #if os(macOS)
+            Label(title, systemImage: icon)
+                .frame(minWidth: Self.toolbarButtonSize, minHeight: Self.toolbarButtonSize)
+            #else
+            if returningToChannel { Text(title) }
+            else { Label(title, systemImage: icon) }
+            #endif
         }
     }
 
@@ -308,13 +323,3 @@ private struct ChannelDescription: View {
         loadError = await model.readChannelDescription(room.id)
     }
 }
-
-#if os(macOS)
-private struct ToolbarDevices: View {
-    @ObservedObject var audio: VoiceAudio
-    var body: some View {
-        HStack(spacing: 0) { DeviceButtons(audio: audio) }
-            .labelStyle(.iconOnly).disabled(audio.voice == nil)
-    }
-}
-#endif

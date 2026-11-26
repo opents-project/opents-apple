@@ -55,19 +55,24 @@ struct VoiceMenu: View {
 
 struct DeviceButtons: View {
     @ObservedObject var audio: VoiceAudio
+    var minimumSize: CGFloat = 44
+
     var body: some View {
-        Button {
-            Task { await audio.setMicrophone(!audio.microphone) }
-        } label: {
-            Label(audio.microphone ? "Mute Microphone" : "Enable Microphone",
-                  systemImage: audio.microphone ? "mic.fill" : "mic.slash")
-                .frame(minWidth: 44, minHeight: 44)
+        Group {
+            Button {
+                Task { await audio.setMicrophone(!audio.microphone) }
+            } label: {
+                Label(audio.microphone ? "Mute Microphone" : "Enable Microphone",
+                      systemImage: audio.microphone ? "mic.fill" : "mic.slash")
+                    .frame(minWidth: minimumSize, minHeight: minimumSize)
+            }
+            Button(action: audio.toggleOutput) {
+                Label(audio.output ? "Mute Output" : "Enable Output",
+                      systemImage: audio.output ? "speaker.wave.2.fill" : "speaker.slash")
+                    .frame(minWidth: minimumSize, minHeight: minimumSize)
+            }
         }
-        Button(action: audio.toggleOutput) {
-            Label(audio.output ? "Mute Output" : "Enable Output",
-                  systemImage: audio.output ? "speaker.wave.2.fill" : "speaker.slash")
-                .frame(minWidth: 44, minHeight: 44)
-        }
+        .disabled(audio.voice == nil)
     }
 }
 
@@ -157,7 +162,7 @@ struct VoiceControls: View {
 
     private var devices: some View {
         HStack(spacing: 2) { DeviceButtons(audio: audio) }
-            .labelStyle(.iconOnly).buttonStyle(.borderless).disabled(audio.voice == nil || model.reconnecting)
+            .labelStyle(.iconOnly).buttonStyle(.borderless).disabled(model.reconnecting)
     }
 
     private var settings: some View {
