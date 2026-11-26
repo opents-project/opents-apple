@@ -20,6 +20,14 @@ struct MemberSelection: Hashable, Identifiable {
     func matches(_ member: RoomMember) -> Bool {
         member.clientId == clientID && member.databaseId == databaseID
     }
+
+    func find(in nodes: [ChannelNode]) -> (member: RoomMember, room: Room)? {
+        for node in nodes {
+            if let member = node.room.memberDetails.first(where: matches) { return (member, node.room) }
+            if let children = node.children, let match = find(in: children) { return match }
+        }
+        return nil
+    }
 }
 
 struct MemberPlaybackList: View {

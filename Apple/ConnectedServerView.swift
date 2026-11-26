@@ -32,6 +32,10 @@ struct ConnectedServerView: View {
     @State private var lockedRoom: Room?
     @State private var password = ""
     #if os(macOS)
+    @State private var memberGroupAssignment: MemberGroupAssignmentTarget?
+    @State private var changingChannelGroup = false
+    @State private var channelGroupError: String?
+    @State private var ownChannelGroupChange: ChannelGroupChange?
     @State private var showRecovery = false
     @State private var showingPushToTalk = false
     @AppStorage(ChannelTreeDensity.storageKey) private var channelTreeDensity = ChannelTreeDensity.standard
@@ -89,6 +93,13 @@ struct ConnectedServerView: View {
         let session: Session
         var id: UInt64 { room.id }
     }
+
+    #if os(macOS)
+    private struct ChannelGroupChange {
+        let target: MemberGroupAssignmentTarget
+        let group: ListedGroup
+    }
+    #endif
 
     private func detailTitle(chatAlongside: Bool) -> String {
         #if os(macOS)
@@ -238,6 +249,36 @@ struct ConnectedServerView: View {
                                          initialGroup: permissionGroup)
             }
         }
+        #if os(macOS)
+        .sheet(item: $memberGroupAssignment) { target in
+            MemberGroupAssignmentView(model: model, target: target)
+        }
+        .onChange(of: tabSelected) { _, selected in
+            if !selected {
+                memberGroupAssignment = nil
+                ownChannelGroupChange = nil
+                channelGroupError = nil
+            }
+        }
+        .alert("Change Your Groups?", isPresented: Binding(get: { tabSelected && ownChannelGroupChange != nil }, set: { visible in
+            if !visible { ownChannelGroupChange = nil }
+        }), presenting: ownChannelGroupChange) { change in
+            Button("Cancel", role: .cancel) { }
+            Button("Change Group") {
+                ownChannelGroupChange = nil
+                Task { await setChannelGroup(change, confirmed: true) }
+            }
+        } message: { change in
+            Text("Switch your channel group to \(change.group.name)? This may change your permissions in this channel.")
+        }
+        .alert("Couldn’t Change Group", isPresented: Binding(get: { tabSelected && channelGroupError != nil }, set: { visible in
+            if !visible { channelGroupError = nil }
+        }), presenting: channelGroupError) { _ in
+            Button("OK", role: .cancel) { }
+        } message: { error in
+            Text(verbatim: error)
+        }
+        #endif
         .sheet(item: $playbackTarget) { target in
             if let member = findMember(target)?.member, let voice = model.audio.voice {
                 MemberPlaybackSettings(member: member, voice: voice)
@@ -249,6 +290,11 @@ struct ConnectedServerView: View {
         .onChange(of: model.reconnecting) { _, reconnecting in
             if reconnecting {
                 showingGroupPermissions = false
+                #if os(macOS)
+                memberGroupAssignment = nil
+                ownChannelGroupChange = nil
+                channelGroupError = nil
+                #endif
                 playbackTarget = nil
                 fileTarget = nil
             }
@@ -383,7 +429,8 @@ struct ConnectedServerView: View {
             case .channel(let id):
                 if let room = model.room(id) { channelRowActions(room) }
             case .member(let target):
-                if let member = findMember(target)?.member {
+                if let match = findMember(target) {
+                    let member = match.member
                     if !member.isSelf, member.uid != nil {
                         Button("Private message", systemImage: "bubble.left") {
                             if let current = findMember(target)?.member { startPrivateChat(current) }
@@ -395,20 +442,13 @@ struct ConnectedServerView: View {
                         }
                     }
                     #if os(macOS)
-                    if !member.serverGroups.isEmpty || member.channelGroup != nil {
-                        Menu("Group permissions", systemImage: "person.2.badge.gearshape") {
-                            if !member.serverGroups.isEmpty {
-                                Section("Server groups") {
-                                    ForEach(member.serverGroups, id: \.id) { group in
-                                        memberGroupButton(group, target: target)
-                                    }
-                                }
-                            }
-                            if let group = member.channelGroup {
-                                Section("Channel group") { memberGroupButton(group, target: target) }
-                            }
+                    if member.databaseId != 0, let session = model.groupPermissionSession {
+                        let assignment = MemberGroupAssignmentTarget(member: target, session: session, channel: match.room.id)
+                        Button("Set Server Group", systemImage: "person.2.badge.gearshape") {
+                            guard tabSelected, assignment.liveMember(in: model) != nil else { return }
+                            memberGroupAssignment = assignment
                         }
-                        .disabled(model.groupPermissionSession == nil)
+                        channelGroupMenu(for: member, target: assignment)
                     }
                     #endif
                 }
@@ -417,14 +457,48 @@ struct ConnectedServerView: View {
     }
 
     #if os(macOS)
-    private func memberGroupButton(_ group: ListedGroup, target: MemberSelection) -> some View {
-        Button {
-            guard let member = findMember(target)?.member else { return }
-            let groups = group.kind == .server ? member.serverGroups : [member.channelGroup].compactMap { $0 }
-            guard let current = groups.first(where: { $0.id == group.id }) else { return }
-            permissionGroup = current
-            showingGroupPermissions = true
-        } label: { Text(verbatim: group.name) }
+    private func channelGroupMenu(for member: RoomMember, target: MemberGroupAssignmentTarget) -> some View {
+        Menu("Set Channel Group", systemImage: "person.wave.2") {
+            let groups = model.channelGroups
+            if let current = member.channelGroup, !groups.contains(where: { $0.id == current.id }) {
+                channelGroupItem(current, selected: true, target: target)
+            } else if groups.isEmpty {
+                Text("No assignable groups.")
+            }
+            ForEach(groups, id: \.id) { group in
+                channelGroupItem(group, selected: member.channelGroup?.id == group.id, target: target)
+            }
+        }
+        .disabled(changingChannelGroup)
+    }
+
+    private func channelGroupItem(_ group: ListedGroup, selected: Bool, target: MemberGroupAssignmentTarget) -> some View {
+        Toggle(isOn: Binding(get: { selected }, set: { chosen in
+            guard chosen else { return }
+            Task { await setChannelGroup(ChannelGroupChange(target: target, group: group)) }
+        })) {
+            Text(verbatim: group.name)
+        }
+        .disabled(selected)
+    }
+
+    @MainActor private func setChannelGroup(_ change: ChannelGroupChange, confirmed: Bool = false) async {
+        let target = change.target
+        guard tabSelected, !changingChannelGroup, ownChannelGroupChange == nil,
+              model.channelGroups.contains(where: { $0.id == change.group.id }),
+              let member = target.liveMember(in: model), member.channelGroup?.id != change.group.id else { return }
+        if member.isSelf, !confirmed {
+            ownChannelGroupChange = change
+            return
+        }
+        changingChannelGroup = true
+        defer { changingChannelGroup = false }
+        let selection = target.member
+        let response = await target.session.setMemberChannelGroup(group: change.group.id, clientId: selection.clientID,
+                                                                   databaseId: selection.databaseID, channel: target.channel,
+                                                                   generation: selection.generation)
+        guard model.groupPermissionSession === target.session, model.groupPermissionGeneration == selection.generation else { return }
+        channelGroupError = response.error
     }
     #endif
 
@@ -609,14 +683,7 @@ struct ConnectedServerView: View {
 
     private func findMember(_ target: MemberSelection) -> (member: RoomMember, room: Room)? {
         guard target.generation == model.generation else { return nil }
-        func find(in nodes: [ChannelNode]) -> (RoomMember, Room)? {
-            for node in nodes {
-                if let member = node.room.memberDetails.first(where: target.matches) { return (member, node.room) }
-                if let children = node.children, let match = find(in: children) { return match }
-            }
-            return nil
-        }
-        return find(in: model.channels)
+        return target.find(in: model.channels)
     }
 
     private func startPrivateChat(_ member: RoomMember) {

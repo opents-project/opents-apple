@@ -362,6 +362,126 @@
         }
       }
     },
+    "Set Server Group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置服务器组"
+          }
+        }
+      }
+    },
+    "Set Channel Group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置频道组"
+          }
+        }
+      }
+    },
+    "Change Your Groups?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更改自己的群组？"
+          }
+        }
+      }
+    },
+    "Change Group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更改群组"
+          }
+        }
+      }
+    },
+    "Add yourself to %@? This may change your permissions on this server.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将自己加入 %@？这可能会改变您在此服务器上的权限。"
+          }
+        }
+      }
+    },
+    "Remove yourself from %@? This may change your permissions on this server.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将自己移出 %@？这可能会改变您在此服务器上的权限。"
+          }
+        }
+      }
+    },
+    "Switch your channel group to %@? This may change your permissions in this channel.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将自己的频道组切换到 %@？这可能会改变您在此频道中的权限。"
+          }
+        }
+      }
+    },
+    "Couldn’t Change Group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法更改群组"
+          }
+        }
+      }
+    },
+    "No assignable groups.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有可分配的群组。"
+          }
+        }
+      }
+    },
+    "Waiting for the server to confirm group membership…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在等待服务器确认群组成员身份…"
+          }
+        }
+      }
+    },
+    "The server accepted the change. The membership update is still pending.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器已接受更改，群组成员身份尚待同步。"
+          }
+        }
+      }
+    },
+    "Permission denied": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "权限不足"
+          }
+        }
+      }
+    },
     "Group permission": {
       "localizations": {
         "zh-Hans": {

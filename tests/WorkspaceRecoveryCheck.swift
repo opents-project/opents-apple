@@ -13,9 +13,9 @@ import Foundation
                         audioSupported: true, kind: "Permanent", members: [], memberDetails: [],
                         subscribed: true, passwordRequired: false, description: nil)
         let live = Snapshot(server: "Local test", serverKey: firstServer, reconnecting: false, audioGeneration: 1, rooms: [room],
-                            currentChannel: room.id, peerIds: [], identityUid: "test", error: nil)
+                            channelGroups: [], currentChannel: room.id, peerIds: [], identityUid: "test", error: nil)
         let lost = Snapshot(server: "", serverKey: nil, reconnecting: true, audioGeneration: 2, rooms: [],
-                            currentChannel: nil, peerIds: [], identityUid: "", error: nil)
+                            channelGroups: [], currentChannel: nil, peerIds: [], identityUid: "", error: nil)
         let scope = ChatScope.channel(id: room.id)
         model.applySnapshot(live, previous: nil)
         precondition(model.channelTreeServerKey == firstServer)

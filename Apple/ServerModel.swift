@@ -61,6 +61,7 @@ final class ServerModel: ObservableObject {
     private var tabSelected = true
     #if os(macOS)
     @Published private(set) var windowTitle = "OpenTS"
+    @Published private(set) var channelGroups: [ListedGroup] = []
     #endif
     private(set) var generation: UInt64 = 0
     let audio = VoiceAudio()
@@ -176,6 +177,10 @@ final class ServerModel: ObservableObject {
     func applySnapshot(_ update: Snapshot, previous: Snapshot?) {
         generation = update.audioGeneration
         reconnecting = update.reconnecting
+        #if os(macOS)
+        let nextChannelGroups = update.reconnecting ? [] : update.channelGroups
+        if channelGroups != nextChannelGroups { channelGroups = nextChannelGroups }
+        #endif
         // Keep the last confirmed channel tree on screen during the retry window.
         if !update.reconnecting && !update.server.isEmpty {
             server = update.server
@@ -242,6 +247,7 @@ final class ServerModel: ObservableObject {
         unreadChat = false
         #if os(macOS)
         updateWindowTitle("OpenTS")
+        channelGroups = []
         #endif
         if !server.isEmpty && !reconnecting { play(.disconnected) }
         audio.disconnect()
