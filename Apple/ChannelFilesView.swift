@@ -47,6 +47,8 @@ private struct ChannelFilesView: View {
                         .disabled(job != nil)
                 }
                 Section {
+                    Button("Upload file", systemImage: "square.and.arrow.up") { picking = true }
+                        .disabled(job != nil || !listed)
                     if !parts.isEmpty {
                         Button("Parent folder", systemImage: "arrow.up") {
                             parts.removeLast()
@@ -94,11 +96,9 @@ private struct ChannelFilesView: View {
             .navigationTitle("Channel files")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
-                ToolbarItemGroup(placement: .primaryAction) {
+                ToolbarItem(placement: .primaryAction) {
                     Button("Refresh", systemImage: "arrow.clockwise") { refresh() }
                         .disabled(job != nil)
-                    Button("Upload file", systemImage: "square.and.arrow.up") { picking = true }
-                        .disabled(job != nil || !listed)
                 }
             }
         }
