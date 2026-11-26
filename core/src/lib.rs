@@ -3,6 +3,8 @@ mod chat;
 pub use channel_management::{ChannelChange, ChannelLifetime, ManagedCodec};
 mod identity;
 pub use identity::{parse_identity_export, stored_identity_uid, ImportedIdentity};
+mod group_management;
+pub use group_management::{GroupPermission, GroupPermissionResponse};
 mod member_quality;
 mod permissions;
 pub use permissions::{
@@ -94,6 +96,7 @@ pub struct Session {
     voice: Arc<Mutex<Arc<Voice>>>,
     inbox: Arc<Mutex<chat::Inbox>>,
     messages: mpsc::Sender<chat::SendRequest>,
+    group_requests: mpsc::Sender<group_management::Request>,
     joins: mpsc::Sender<JoinRequest>,
     channel_changes: mpsc::Sender<channel_management::Request>,
     stop: Mutex<Option<oneshot::Sender<()>>>,
@@ -112,6 +115,7 @@ impl Session {
         let worker_inbox = inbox.clone();
         let (messages, chat_requests) = mpsc::channel(1);
         let (channel_changes, changes) = mpsc::channel(1);
+        let (group_requests, group_receiver) = mpsc::channel(1);
         let (joins, requests) = mpsc::channel(1);
         let (stop, closed) = oneshot::channel();
         std::thread::spawn(move || {
@@ -128,6 +132,7 @@ impl Session {
                         requests,
                         changes,
                         chat_requests,
+                        group_receiver,
                         &worker_inbox,
                         io,
                         &current_voice,
@@ -146,6 +151,7 @@ impl Session {
             voice,
             inbox,
             messages,
+            group_requests,
             joins,
             channel_changes,
             stop: Mutex::new(Some(stop)),
@@ -310,6 +316,7 @@ async fn run(
     mut requests: mpsc::Receiver<JoinRequest>,
     mut changes: mpsc::Receiver<channel_management::Request>,
     mut chat_requests: mpsc::Receiver<chat::SendRequest>,
+    mut group_receiver: mpsc::Receiver<group_management::Request>,
     inbox: &Mutex<chat::Inbox>,
     mut io: voice::AudioIo,
     current_voice: &Mutex<Arc<Voice>>,
@@ -332,6 +339,9 @@ async fn run(
     tokio::pin!(end_talk);
     let mut ready = false;
     let mut audio_generation = 0;
+    let mut pending_group: Option<group_management::Pending> = None;
+    let group_deadline = tokio::time::sleep(Duration::ZERO);
+    tokio::pin!(group_deadline);
     let mut pending_chat: Option<(tsclientlib::MessageHandle, chat::SendRequest, String)> = None;
     let chat_deadline = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(chat_deadline);
@@ -388,6 +398,19 @@ async fn run(
             _ = &mut chat_deadline, if pending_chat.is_some() => {
                 if let Some((_, request, _)) = pending_chat.take() {
                     let _ = request.reply.send(Some("The server did not confirm delivery.".into()));
+                }
+                continue;
+            }
+            _ = &mut group_deadline, if pending_group.as_ref().is_some_and(|p| p.waiting()) => {
+                if let Some(p) = &mut pending_group { p.fail("Permission request timed out"); }
+                continue;
+            }
+            request = group_receiver.recv() => {
+                let Some(request) = request else { break };
+                let idle = pending_group.is_none();
+                group_management::Pending::start(request, &mut con, ready, audio_generation, &mut pending_group);
+                if idle {
+                    group_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(10));
                 }
                 continue;
             }
@@ -467,6 +490,22 @@ async fn run(
                     .server
                     .set_subscribed(true);
                 subscription.send(&mut con).map_err(|e| e.to_string())?;
+            }
+            StreamItem::MessageEvent(
+                message @ (InMessage::ServerGroupPermList(_) | InMessage::ChannelGroupPermList(_)),
+            ) => {
+                if let Some(p) = &mut pending_group {
+                    p.observe(&message);
+                }
+                continue;
+            }
+            StreamItem::MessageResult(handle, result)
+                if pending_group.as_ref().is_some_and(|p| p.handle == handle) =>
+            {
+                if let Some(p) = pending_group.take() {
+                    p.finish(&con, result);
+                }
+                continue;
             }
             StreamItem::NetworkStatsUpdated => {
                 if let Ok(stats) = con.get_network_stats() {
@@ -566,6 +605,9 @@ async fn run(
                 }
                 if let Some((_, reply)) = editing.take() {
                     let _ = reply.send(Some("Connection interrupted".into()));
+                }
+                if let Some(mut p) = pending_group.take() {
+                    p.fail("Connection interrupted");
                 }
                 ready = false;
                 last_codec = None;

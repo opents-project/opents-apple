@@ -59,6 +59,9 @@ final class ServerModel: ObservableObject {
     private var session: Session?
     private var observer: Task<Void, Never>?
 
+    var groupPermissionSession: Session? { reconnecting || server.isEmpty ? nil : session }
+    var groupPermissionGeneration: UInt64 { generation }
+
     func connect() {
         guard !active else { return }
         error = nil

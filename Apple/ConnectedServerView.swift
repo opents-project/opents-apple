@@ -9,6 +9,7 @@ struct ConnectedServerView: View {
     @State private var showingChat = false
     @State private var chatSelection: ChatScope?
     @State private var editorTarget: ChannelEditorTarget?
+    @State private var showingGroupPermissions = false
     @State private var showingIdentity = false
     @State private var lockedRoom: Room?
     @State private var password = ""
@@ -83,6 +84,14 @@ struct ConnectedServerView: View {
         }
         .sheet(item: $editorTarget) { target in
             ChannelManagementView(model: model, target: target)
+        }
+        .sheet(isPresented: $showingGroupPermissions) {
+            if let session = model.groupPermissionSession {
+                LiveGroupPermissionsView(session: session, generation: model.groupPermissionGeneration)
+            }
+        }
+        .onChange(of: model.reconnecting) { _, reconnecting in
+            if reconnecting { showingGroupPermissions = false }
         }
         .sheet(isPresented: $showingIdentity) {
             VStack(alignment: .leading, spacing: 12) {
@@ -179,6 +188,8 @@ struct ConnectedServerView: View {
                         }
                     }
                 }.disabled(model.reconnecting)
+                Button("Group permissions", systemImage: "person.2.badge.gearshape") { showingGroupPermissions = true }
+                    .disabled(model.groupPermissionSession == nil)
                 Button("My Identity", systemImage: "person.text.rectangle") { showingIdentity = true }
                 Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right", action: model.disconnect)
             } label: { Label("More", systemImage: "ellipsis.circle") }
