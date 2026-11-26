@@ -81,24 +81,21 @@ final class ServerModel: ObservableObject {
                 let batch = connection.takeChat()
                 if !batch.isEmpty { self?.chat.receive(batch) }
                 if update != previous {
-                    self?.generation = update.audioGeneration
-                    self?.reconnecting = update.reconnecting
+                    self?.applySnapshot(update, previous: previous)
                     if update.reconnecting {
-                        if previous?.server.isEmpty == false { self?.play(.disconnected) }
-                        self?.audio.disconnect()
+                        if previous?.reconnecting != true {
+                            self?.play(.disconnected)
+                            self?.audio.disconnect()
+                        }
+                    } else if !update.server.isEmpty {
+                        if previous?.server.isEmpty != false || previous?.audioGeneration != update.audioGeneration {
+                            self?.audio.connect(connection.audio())
+                            UserDefaults.standard.set(destination, forKey: "lastServer")
+                            UserDefaults.standard.set(self?.nickname, forKey: "lastNickname")
+                        }
+                        self?.refreshTransmission()
+                        for cue in ChannelSound.changes(from: previous, to: update) { self?.play(cue) }
                     }
-                    if !update.server.isEmpty && (previous?.server.isEmpty != false || previous?.audioGeneration != update.audioGeneration) {
-                        self?.audio.connect(connection.audio())
-                    }
-                    for cue in ChannelSound.changes(from: previous, to: update) { self?.play(cue) }
-                    self?.currentChannel = update.currentChannel
-                    if !update.server.isEmpty && previous?.server != update.server {
-                        UserDefaults.standard.set(destination, forKey: "lastServer")
-                        UserDefaults.standard.set(self?.nickname, forKey: "lastNickname")
-                    }
-                    self?.identityUID = update.identityUid
-                    self?.server = update.server
-                    self?.channels = ChannelNode.tree(update.rooms)
                     previous = update
                 }
                 try? await Task.sleep(for: .milliseconds(350))
@@ -106,14 +103,46 @@ final class ServerModel: ObservableObject {
         }
     }
 
+    var currentRoom: Room? { currentChannel.flatMap { room($0) } }
+
+    func room(_ id: UInt64) -> Room? {
+        func lookup(_ nodes: [ChannelNode]) -> Room? {
+            for node in nodes {
+                if node.id == id { return node.room }
+                if let children = node.children, let match = lookup(children) { return match }
+            }
+            return nil
+        }
+        return lookup(channels)
+    }
+
+    func applySnapshot(_ update: Snapshot, previous: Snapshot?) {
+        generation = update.audioGeneration
+        reconnecting = update.reconnecting
+        // Keep the last confirmed channel tree on screen during the retry window.
+        if !update.reconnecting && !update.server.isEmpty {
+            server = update.server
+            identityUID = update.identityUid
+            currentChannel = update.currentChannel
+            if update.rooms != previous?.rooms { channels = ChannelNode.tree(update.rooms) }
+        }
+        refreshTransmission()
+    }
+
+    private func refreshTransmission() {
+        audio.setChannelAllowsTransmission(!reconnecting && !joining && currentRoom?.audioSupported == true)
+    }
+
     func join(_ room: Room, password: String = "") {
-        guard let session, !joining, currentChannel != room.id else { return }
+        guard let session, !reconnecting, !joining, currentChannel != room.id else { return }
         joining = true
+        refreshTransmission()
         joinError = nil
         Task {
             let failure = await session.joinChannel(channel: room.id, password: password)
             guard self.session === session else { return }
             joining = false
+            refreshTransmission()
             joinError = failure?.userMessage
         }
     }
@@ -128,7 +157,7 @@ final class ServerModel: ObservableObject {
     }
 
     func sendChat(_ scope: ChatScope) {
-        guard let session, !server.isEmpty, chat.sending == nil, let text = chat.drafts[scope],
+        guard let session, !server.isEmpty, !reconnecting, chat.sending == nil, let text = chat.drafts[scope],
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let expected = generation
         chat.sending = scope
@@ -142,8 +171,9 @@ final class ServerModel: ObservableObject {
 
     func disconnect() {
         chat = ChatState()
-        if !server.isEmpty { play(.disconnected) }
+        if !server.isEmpty && !reconnecting { play(.disconnected) }
         audio.disconnect()
+        audio.voiceActivated = false
         joining = false
         joinError = nil
         currentChannel = nil

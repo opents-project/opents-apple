@@ -22,7 +22,8 @@ private struct StatusMenu: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        if model.active { if model.server.isEmpty { Text("Connecting…") } else { Text(verbatim: model.server) } }
+        if model.reconnecting { Text("Reconnecting…") }
+        else if model.active { if model.server.isEmpty { Text("Connecting…") } else { Text(verbatim: model.server) } }
         Button(model.active ? "Show OpenTS" : "Connect…") {
             openWindow(id: "main")
             NSApp.activate(ignoringOtherApps: true)
@@ -30,7 +31,7 @@ private struct StatusMenu: View {
         Button(model.active && model.server.isEmpty ? "Cancel Connection" : "Disconnect", action: model.disconnect)
             .disabled(!model.active)
         Divider()
-        VoiceMenu(audio: model.audio).disabled(model.server.isEmpty)
+        VoiceMenu(audio: model.audio).disabled(model.server.isEmpty || model.reconnecting)
         Divider()
         Button("Quit OpenTS") { model.disconnect(); NSApp.terminate(nil) }
     }

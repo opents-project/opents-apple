@@ -7,12 +7,14 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 use tsclientlib::ClientId;
 use tsproto_packets::packets::{AudioData, CodecType, InAudioBuf, OutAudio, OutPacket};
 
 pub const FRAME: usize = 960;
+const SPEAKING_HOLD: Duration = Duration::from_millis(750);
+const SPEAKING_RMS_THRESHOLD: f64 = 0.002;
 
 #[derive(Clone, Copy, Default)]
 pub(crate) struct DeviceState {
@@ -120,6 +122,7 @@ struct Playback {
     streams: HashMap<(ClientId, u64), Talker>,
     controls: HashMap<u64, SpeakerMix>,
     arrivals: HashMap<(ClientId, u64), Arrival>,
+    audible_at: HashMap<(ClientId, u64), Instant>,
     stats: VoiceDiagnostics,
 }
 
@@ -127,15 +130,24 @@ impl Playback {
     fn render(&mut self) -> Vec<f32> {
         let mut output = vec![0.0; FRAME * 2];
         let mut samples = [0.0; FRAME * 2];
+        let now = Instant::now();
         self.streams.retain(|source, talker| {
             let rendered = talker.render(&mut samples);
             self.stats.rx_concealed_frames += rendered.concealed_frames as u64;
             self.stats.rx_recovered_frames += rendered.recovered_frames as u64;
+            let pcm = &samples[..rendered.samples];
+            let energy = pcm
+                .iter()
+                .map(|sample| f64::from(*sample).powi(2))
+                .sum::<f64>();
+            if !pcm.is_empty() && energy >= SPEAKING_RMS_THRESHOLD.powi(2) * pcm.len() as f64 {
+                self.audible_at.insert(*source, now);
+            }
             self.controls
                 .get(&source.1)
                 .copied()
                 .unwrap_or_default()
-                .add_to(&samples[..rendered.samples], &mut output);
+                .add_to(pcm, &mut output);
             if talker.finished() {
                 self.arrivals.remove(source);
                 false
@@ -143,10 +155,18 @@ impl Playback {
                 true
             }
         });
+        self.audible_at
+            .retain(|_, at| now.saturating_duration_since(*at) < SPEAKING_HOLD);
         for sample in &mut output {
             *sample = sample.clamp(-1.0, 1.0);
         }
         output
+    }
+
+    fn member_is_speaking_at(&self, client_id: u16, database_id: u64, now: Instant) -> bool {
+        self.audible_at
+            .get(&(ClientId(client_id), database_id))
+            .is_some_and(|at| now.saturating_duration_since(*at) < SPEAKING_HOLD)
     }
 }
 
@@ -164,6 +184,7 @@ pub struct ConnectionQuality {
 pub struct Voice {
     quality: Mutex<Option<(Instant, ConnectionQuality)>>,
     pub(crate) member_quality: Mutex<crate::member_quality::MemberQuality>,
+    last_tx_at: Mutex<Option<Instant>>,
     capture: mpsc::Sender<CapturedFrame>,
     capture_epoch: AtomicU64,
     tx_enqueued: AtomicU64,
@@ -248,6 +269,7 @@ impl Voice {
                 capture,
                 quality: Mutex::default(),
                 member_quality: Mutex::default(),
+                last_tx_at: Mutex::default(),
                 capture_epoch: AtomicU64::new(0),
                 tx_enqueued: AtomicU64::new(0),
                 tx_full: AtomicU64::new(0),
@@ -338,6 +360,7 @@ impl Voice {
 
     pub(crate) fn audio_sent(&self) {
         self.tx_sent.fetch_add(1, Ordering::Relaxed);
+        *self.last_tx_at.lock().unwrap() = Some(Instant::now());
     }
 }
 
@@ -354,6 +377,7 @@ impl Voice {
             let mut playback = self.playback.lock().unwrap();
             playback.streams.clear();
             playback.arrivals.clear();
+            playback.audible_at.clear();
         }
     }
 
@@ -394,6 +418,17 @@ impl Voice {
             .lock()
             .unwrap()
             .read(client_id, database_id, Instant::now())
+    }
+
+    pub fn member_is_speaking(&self, client_id: u16, database_id: u64) -> bool {
+        self.playback
+            .lock()
+            .unwrap()
+            .member_is_speaking_at(client_id, database_id, Instant::now())
+    }
+
+    pub fn is_locally_speaking(&self) -> bool {
+        self.is_locally_speaking_at(Instant::now())
     }
 
     pub fn connection_quality(&self) -> Option<ConnectionQuality> {
@@ -443,6 +478,15 @@ impl Voice {
 
     pub fn playback_frame(&self) -> Vec<f32> {
         self.playback.lock().unwrap().render()
+    }
+}
+
+impl Voice {
+    fn is_locally_speaking_at(&self, now: Instant) -> bool {
+        self.last_tx_at
+            .lock()
+            .unwrap()
+            .is_some_and(|at| now.saturating_duration_since(at) < SPEAKING_HOLD)
     }
 }
 
@@ -500,6 +544,18 @@ mod tests {
             })
             .collect();
         let packet = encode(enc, &samples, CodecType::OpusVoice).unwrap();
+        let source = InAudioBuf::try_new(Direction::C2S, packet.into_vec()).unwrap();
+        OutAudio::new(&AudioData::S2C {
+            id,
+            from,
+            codec: CodecType::OpusVoice,
+            data: source.data().data().data(),
+        })
+        .into_vec()
+    }
+
+    fn pcm_packet(enc: &Encoder, id: u16, from: u16, samples: &[f32]) -> Vec<u8> {
+        let packet = encode(enc, samples, CodecType::OpusVoice).unwrap();
         let source = InAudioBuf::try_new(Direction::C2S, packet.into_vec()).unwrap();
         OutAudio::new(&AudioData::S2C {
             id,
@@ -607,6 +663,44 @@ mod tests {
         io.voice.set_devices(false, true, false, false);
         deliver(&io.voice, tone_packet(&enc, 220, 7, 440.0), 10);
         assert_eq!(io.voice.diagnostics().rx_gap_slots, 3);
+    }
+
+    #[test]
+    fn member_activity_uses_audible_pcm_and_expires_after_playback_stops() {
+        let io = Voice::pair();
+        let voice = io.voice;
+        voice.set_devices(false, true, false, false);
+        let encoder = encoder().unwrap();
+        let silence = vec![0.0; FRAME];
+        for id in 0..8 {
+            deliver(&voice, pcm_packet(&encoder, id, 7, &silence), 10);
+            voice.playback_frame();
+            assert!(!voice.member_is_speaking(7, 10));
+        }
+
+        for id in 8..16 {
+            deliver(&voice, tone_packet(&encoder, id, 7, 440.0), 10);
+            voice.playback_frame();
+        }
+        assert!(voice.member_is_speaking(7, 10));
+        let now = Instant::now();
+        assert!(voice
+            .playback
+            .lock()
+            .unwrap()
+            .member_is_speaking_at(7, 10, now));
+        assert!(!voice.playback.lock().unwrap().member_is_speaking_at(
+            7,
+            10,
+            now + SPEAKING_HOLD + Duration::from_millis(1)
+        ));
+        assert!(!voice.member_is_speaking(8, 11));
+
+        assert!(!voice.is_locally_speaking());
+        voice.audio_sent();
+        assert!(voice.is_locally_speaking());
+        assert!(!voice
+            .is_locally_speaking_at(Instant::now() + SPEAKING_HOLD + Duration::from_millis(1)));
     }
 
     #[test]

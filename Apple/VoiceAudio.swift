@@ -66,6 +66,14 @@ final class VoiceAudio: ObservableObject {
                           micMuted: installedTap && !microphone, outputMuted: player != nil && !output)
     }
 
+    private var channelAllowsTransmission = true
+
+    func setChannelAllowsTransmission(_ allowed: Bool) {
+        guard channelAllowsTransmission != allowed else { return }
+        channelAllowsTransmission = allowed
+        resetTalkControls()
+    }
+
     private var buttonHeld = false
     private var shortcutHeld = false
 
@@ -109,7 +117,7 @@ final class VoiceAudio: ObservableObject {
         buttonHeld = false
         shortcutHeld = false
         #if os(macOS)
-        if globalShortcut && microphone && output && !voiceActivated {
+        if channelAllowsTransmission && globalShortcut && microphone && output && !voiceActivated {
             shortcutUnavailable = !hotKey.start()
         } else {
             hotKey.stop()
@@ -125,8 +133,8 @@ final class VoiceAudio: ObservableObject {
     }
 
     private func updateTransmission() {
-        talking = (buttonHeld || shortcutHeld) && microphone && output && !voiceActivated
-        gate.configure(held: talking, threshold: voiceActivated && microphone && output ? threshold : nil)
+        talking = channelAllowsTransmission && (buttonHeld || shortcutHeld) && microphone && output && !voiceActivated
+        gate.configure(held: talking, threshold: channelAllowsTransmission && voiceActivated && microphone && output ? threshold : nil)
     }
 
     func disconnect() {
@@ -134,7 +142,6 @@ final class VoiceAudio: ObservableObject {
         deviceMonitor = nil
         #endif
         stopEngine()
-        voiceActivated = false
         voice = nil
         message = nil
         #if os(iOS)
