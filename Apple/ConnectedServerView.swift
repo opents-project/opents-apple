@@ -75,14 +75,14 @@ struct ConnectedServerView: View {
                         .navigationTitle(model.server)
                         #endif
                         .navigationSplitViewColumnWidth(min: 170, ideal: 245, max: 440)
+                        #if os(iOS)
                         .toolbar {
                             if tabSelected { ToolbarItem(placement: .navigation) { channelTreeMenu } }
-                            #if os(iOS)
                             if widthClass == .compact || Self.startsInChannelList {
                                 actions(closeChatReplacesDetail: !alongside)
                             }
-                            #endif
                         }
+                        #endif
                 } detail: {
                     HStack(spacing: 0) {
                         if !showingChat || alongside {
@@ -183,7 +183,11 @@ struct ConnectedServerView: View {
                     }
                     channelRows
                 } header: {
-                    if connections != nil { Text("Channels") }
+                    HStack {
+                        Text("Channels")
+                        Spacer()
+                        channelTreeMenu
+                    }
                 }
                 #else
                 Section {
@@ -247,8 +251,17 @@ struct ConnectedServerView: View {
             channelTreeActions
         } label: {
             Label("Channel list actions", systemImage: "list.bullet")
+                .labelStyle(.iconOnly)
+                #if os(macOS)
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+                #endif
         }
-        .labelStyle(.iconOnly)
+        #if os(macOS)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        #endif
         .help("Channel list actions")
     }
 
