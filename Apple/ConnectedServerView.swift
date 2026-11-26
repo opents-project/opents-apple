@@ -4,7 +4,8 @@ struct ConnectedServerView: View {
     @ObservedObject var model: ServerModel
     @State private var selection: UInt64?
     @State private var expanded: Set<UInt64> = []
-    @State private var compactColumn = NavigationSplitViewColumn.detail
+    @State private var compactColumn = Self.startsInChannelList
+        ? NavigationSplitViewColumn.sidebar : .detail
     @State private var columns = NavigationSplitViewVisibility.all
     @State private var showingChat = false
     @State private var chatSelection: ChatScope?
@@ -20,6 +21,14 @@ struct ConnectedServerView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var widthClass
     #endif
+
+    private static var startsInChannelList: Bool {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        false
+        #endif
+    }
 
     private struct Location: Equatable {
         let channel: UInt64?
@@ -66,6 +75,12 @@ struct ConnectedServerView: View {
         }
         .onChange(of: Location(channel: model.currentChannel, retrying: model.reconnecting), initial: true) { old, new in
             guard !new.retrying, let id = new.channel else { return }
+            if Self.startsInChannelList, compactColumn == .sidebar {
+                if let path = ChannelNode.path(to: id, in: model.channels) {
+                    expanded.formUnion(path.dropLast())
+                }
+                return
+            }
             if old.retrying, selection != old.channel, selectedRoom != nil { return }
             if selection == nil || old.channel != id { locate(id) }
         }
@@ -162,7 +177,8 @@ struct ConnectedServerView: View {
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 showingChat.toggle()
-                compactColumn = .detail
+                compactColumn = !showingChat && selection == nil && Self.startsInChannelList
+                    ? .sidebar : .detail
             } label: {
                 if showingChat && closeChatReplacesDetail {
                     Text("Back to channel")
