@@ -1,6 +1,96 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Show Sidebar": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示边栏"
+          }
+        }
+      }
+    },
+    "Hide Sidebar": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐藏边栏"
+          }
+        }
+      }
+    },
+    "New Connection": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建连接"
+          }
+        }
+      }
+    },
+    "Connections": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接"
+          }
+        }
+      }
+    },
+    "Channels": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道"
+          }
+        }
+      }
+    },
+    "Remove Connection": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除连接"
+          }
+        }
+      }
+    },
+    "Unread Messages": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未读消息"
+          }
+        }
+      }
+    },
+    "Replace Current Connection": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "替换当前连接"
+          }
+        }
+      }
+    },
+    "No Bookmarks": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无书签"
+          }
+        }
+      }
+    },
     "Channel list actions": {
       "localizations": {
         "zh-Hans": {

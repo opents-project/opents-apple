@@ -1,13 +1,17 @@
 #if os(macOS)
 import Carbon
+import CoreGraphics
+import Foundation
 
 /// Carbon delivers just this registered shortcut to the application's main event loop.
 @MainActor
 final class TalkHotKey {
     private static let signature: OSType = 0x4F545350 // OTSP
-    private var sequence: UInt32 = 0
+    private static var sequence: UInt32 = 0
+    private var registrationID: UInt32 = 0
     private var key: EventHotKeyRef?
     private var handler: EventHandlerRef?
+    private var spaceReleaseCheck: Timer?
     private let changed: (Bool) -> Void
 
     init(changed: @escaping (Bool) -> Void) { self.changed = changed }
@@ -28,21 +32,31 @@ final class TalkHotKey {
             return MainActor.assumeIsolated {
                 let owner = Unmanaged<TalkHotKey>.fromOpaque(context).takeUnretainedValue()
                 guard owner.key != nil, identifier.signature == TalkHotKey.signature,
-                      identifier.id == owner.sequence else { return OSStatus(eventNotHandledErr) }
-                owner.changed(GetEventKind(event) == UInt32(kEventHotKeyPressed))
+                      identifier.id == owner.registrationID else { return OSStatus(eventNotHandledErr) }
+                if GetEventKind(event) == UInt32(kEventHotKeyReleased) {
+                    owner.changed(false)
+                } else if owner.spaceReleaseCheck == nil {
+                    owner.changed(true)
+                }
                 return noErr
             }
         }, kinds.count, kinds, Unmanaged.passUnretained(self).toOpaque(), &handler)
         guard status == noErr else { return false }
-        sequence &+= 1
-        let id = EventHotKeyID(signature: Self.signature, id: sequence)
+        Self.sequence &+= 1
+        registrationID = Self.sequence
+        let id = EventHotKeyID(signature: Self.signature, id: registrationID)
         if RegisterEventHotKey(UInt32(kVK_Space), UInt32(optionKey | shiftKey), id, target,
-                               OptionBits(kEventHotKeyExclusive), &key) == noErr { return true }
+                               OptionBits(kEventHotKeyExclusive), &key) == noErr {
+            waitForHeldSpaceRelease()
+            return true
+        }
         stop()
         return false
     }
 
     func stop() {
+        spaceReleaseCheck?.invalidate()
+        spaceReleaseCheck = nil
         if let key { UnregisterEventHotKey(key) }
         key = nil
         if let handler { RemoveEventHandler(handler) }
@@ -50,8 +64,26 @@ final class TalkHotKey {
     }
 
     deinit {
+        spaceReleaseCheck?.invalidate()
         if let key { UnregisterEventHotKey(key) }
         if let handler { RemoveEventHandler(handler) }
+    }
+
+    private func waitForHeldSpaceRelease() {
+        guard Self.spaceIsDown else { return }
+        let check = Timer(timeInterval: 0.02, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard !Self.spaceIsDown else { return }
+                timer.invalidate()
+                self?.spaceReleaseCheck = nil
+            }
+        }
+        spaceReleaseCheck = check
+        RunLoop.main.add(check, forMode: .common)
+    }
+
+    private static var spaceIsDown: Bool {
+        CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(kVK_Space))
     }
 }
 #endif

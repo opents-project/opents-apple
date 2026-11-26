@@ -1,10 +1,16 @@
 import SwiftUI
 
 struct ServerBookmark: Identifiable, Codable, Equatable {
+    static let storageKey = "serverBookmarks.v1"
+
     var id = UUID()
     var name: String
     var address: String
     var nickname: String
+
+    static func saved(from data: Data) -> [Self] {
+        (try? JSONDecoder().decode([Self].self, from: data)) ?? []
+    }
 
     var normalized: Self {
         var copy = self
@@ -19,11 +25,11 @@ struct ServerBookmark: Identifiable, Codable, Equatable {
 struct BookmarkSection: View {
     @Binding var address: String
     @Binding var nickname: String
-    @AppStorage("serverBookmarks.v1") private var data = Data()
+    @AppStorage(ServerBookmark.storageKey) private var data = Data()
     @State private var editing: ServerBookmark?
 
     private var bookmarks: [ServerBookmark] {
-        (try? JSONDecoder().decode([ServerBookmark].self, from: data)) ?? []
+        ServerBookmark.saved(from: data)
     }
 
     var body: some View {

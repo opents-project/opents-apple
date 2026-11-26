@@ -2,6 +2,10 @@ import SwiftUI
 
 struct ConnectedServerView: View {
     @ObservedObject var model: ServerModel
+    var tabSelected = true
+    #if os(macOS)
+    var connections: ServerConnectionsSection? = nil
+    #endif
     @State private var selection: UInt64?
     @State private var expansionServerKey: String?
     @State private var savedExpansion: Set<UInt64> = []
@@ -54,6 +58,10 @@ struct ConnectedServerView: View {
         var id: UInt64 { room.id }
     }
 
+    private func detailTitle(chatAlongside: Bool) -> String {
+        showingChat && !chatAlongside ? String(localized: "Text chat") : selectedRoom?.name ?? model.server
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let narrow = geometry.size.width < 600
@@ -61,10 +69,14 @@ struct ConnectedServerView: View {
             VStack(spacing: 0) {
                 NavigationSplitView(columnVisibility: $columns, preferredCompactColumn: $compactColumn) {
                     sidebar
+                        #if os(macOS)
+                        .toolbar(removing: .sidebarToggle)
+                        #else
                         .navigationTitle(model.server)
+                        #endif
                         .navigationSplitViewColumnWidth(min: 170, ideal: 245, max: 440)
                         .toolbar {
-                            ToolbarItem(placement: .navigation) { channelTreeMenu }
+                            if tabSelected { ToolbarItem(placement: .navigation) { channelTreeMenu } }
                             #if os(iOS)
                             if widthClass == .compact || Self.startsInChannelList {
                                 actions(closeChatReplacesDetail: !alongside)
@@ -82,14 +94,23 @@ struct ConnectedServerView: View {
                                 .frame(maxWidth: alongside ? 370 : .infinity, maxHeight: .infinity)
                         }
                     }
-                    .navigationTitle(showingChat && !alongside ? String(localized: "Text chat") : selectedRoom?.name ?? model.server)
                     #if os(iOS)
+                    .navigationTitle(detailTitle(chatAlongside: alongside))
                     .navigationBarTitleDisplayMode(.inline)
                     #endif
-                    .toolbar { actions(closeChatReplacesDetail: !alongside) }
+                    .toolbar {
+                        if tabSelected { actions(closeChatReplacesDetail: !alongside) }
+                    }
                 }
                 .navigationSplitViewStyle(.balanced)
-                #if os(iOS)
+                #if os(macOS)
+                .toolbar {
+                    if tabSelected { ToolbarItem(placement: .navigation) { sidebarVisibilityButton } }
+                }
+                .onChange(of: detailTitle(chatAlongside: alongside), initial: true) { _, title in
+                    model.updateWindowTitle(title)
+                }
+                #else
                 .environment(\.horizontalSizeClass, UIDevice.current.userInterfaceIdiom == .phone ? .compact : widthClass)
                 #endif
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -142,7 +163,7 @@ struct ConnectedServerView: View {
             Button("Join") { model.join(room, password: password); password = "" }
             Button("Cancel", role: .cancel) { password = "" }
         } message: { Text($0.name) }
-        .alert("Couldn’t Join Channel", isPresented: Binding(get: { model.joinError != nil }, set: { if !$0 { model.joinError = nil } })) {
+        .alert("Couldn’t Join Channel", isPresented: Binding(get: { tabSelected && model.joinError != nil }, set: { if !$0, tabSelected { model.joinError = nil } })) {
             Button("OK") { model.joinError = nil }
         } message: { Text(model.joinError ?? "") }
     }
@@ -151,14 +172,19 @@ struct ConnectedServerView: View {
         ScrollViewReader { proxy in
             List(selection: $selection) {
                 #if os(macOS)
-                if model.reconnecting {
-                    Label("Reconnecting…", systemImage: "arrow.clockwise")
-                        .foregroundStyle(.secondary)
-                } else if showRecovery {
-                    Label("Reconnected", systemImage: "checkmark.circle")
-                        .foregroundStyle(.secondary)
+                if let connections { connections }
+                Section {
+                    if model.reconnecting {
+                        Label("Reconnecting…", systemImage: "arrow.clockwise")
+                            .foregroundStyle(.secondary)
+                    } else if showRecovery {
+                        Label("Reconnected", systemImage: "checkmark.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    channelRows
+                } header: {
+                    if connections != nil { Text("Channels") }
                 }
-                channelRows
                 #else
                 Section {
                     channelRows
@@ -185,6 +211,18 @@ struct ConnectedServerView: View {
         ChannelRows(nodes: model.channels, current: model.currentChannel, expanded: channelExpansion,
                     audio: model.audio, startChat: startPrivateChat)
     }
+
+    #if os(macOS)
+    private var sidebarVisibilityButton: some View {
+        let hidden = columns == .detailOnly
+        let title: LocalizedStringKey = hidden ? "Show Sidebar" : "Hide Sidebar"
+        return Button {
+            columns = hidden ? .all : .detailOnly
+        } label: {
+            Label(title, systemImage: "sidebar.left")
+        }
+    }
+    #endif
 
     private var sidebarPrimaryAction: ((Set<UInt64>) -> Void)? {
         #if os(macOS)

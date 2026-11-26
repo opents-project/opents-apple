@@ -30,6 +30,27 @@ impl DeviceState {
     }
 }
 
+#[derive(Default)]
+struct CaptureState {
+    generation: u64,
+    has_channel: bool,
+    device_enabled: bool,
+}
+
+impl CaptureState {
+    fn invalidate(&mut self) {
+        self.generation = self.generation.wrapping_add(1).max(1);
+    }
+
+    fn epoch(&self) -> u64 {
+        if self.has_channel && self.device_enabled {
+            self.generation
+        } else {
+            0
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, uniffi::Record)]
 pub struct SpeakerMix {
     pub gain: f32,
@@ -186,7 +207,7 @@ pub struct Voice {
     pub(crate) member_quality: Mutex<crate::member_quality::MemberQuality>,
     last_tx_at: Mutex<Option<Instant>>,
     capture: mpsc::Sender<CapturedFrame>,
-    capture_epoch: AtomicU64,
+    capture_state: Mutex<CaptureState>,
     tx_enqueued: AtomicU64,
     tx_full: AtomicU64,
     tx_sent: AtomicU64,
@@ -197,7 +218,6 @@ pub struct Voice {
 pub(crate) struct AudioIo {
     pub capture: mpsc::Receiver<CapturedFrame>,
     route: Option<(u64, CodecType)>,
-    epoch: u64,
     encoder: Option<Encoder>,
     pub enabled: watch::Receiver<DeviceState>,
     pub voice: Arc<Voice>,
@@ -222,13 +242,11 @@ impl AudioIo {
             Some(_) => return Err("Unsupported audio codec".into()),
             None => None,
         };
-        self.epoch += 1;
-        self.voice.capture_epoch.store(
-            if route.is_some() { self.epoch } else { 0 },
-            Ordering::Release,
-        );
         self.route = route;
         self.encoder = encoder;
+        let mut capture = self.voice.capture_state.lock().unwrap();
+        capture.invalidate();
+        capture.has_channel = route.is_some();
         Ok(true)
     }
 
@@ -239,7 +257,7 @@ impl AudioIo {
         let (Some((_, codec)), Some(encoder)) = (self.route, &self.encoder) else {
             return Ok(None);
         };
-        if frame.epoch != self.epoch || !self.enabled.borrow().can_capture() {
+        if frame.epoch == 0 || frame.epoch != self.voice.capture_epoch() {
             return Ok(None);
         }
         let samples = match (codec, frame.samples.len()) {
@@ -262,7 +280,6 @@ impl Voice {
         AudioIo {
             capture: frames,
             route: None,
-            epoch: 0,
             encoder: None,
             enabled: changes,
             voice: Arc::new(Self {
@@ -270,7 +287,7 @@ impl Voice {
                 quality: Mutex::default(),
                 member_quality: Mutex::default(),
                 last_tx_at: Mutex::default(),
-                capture_epoch: AtomicU64::new(0),
+                capture_state: Mutex::default(),
                 tx_enqueued: AtomicU64::new(0),
                 tx_full: AtomicU64::new(0),
                 tx_sent: AtomicU64::new(0),
@@ -367,12 +384,22 @@ impl Voice {
 #[uniffi::export]
 impl Voice {
     pub fn set_devices(&self, microphone: bool, output: bool, mic_muted: bool, output_muted: bool) {
-        self.enabled.send_replace(DeviceState {
+        let devices = DeviceState {
             microphone,
             output,
             mic_muted,
             output_muted,
-        });
+        };
+        {
+            let mut capture = self.capture_state.lock().unwrap();
+            let device_enabled = devices.can_capture();
+            if capture.device_enabled && !device_enabled {
+                // Frames queued before a mute or hardware stop cannot survive a restart.
+                capture.invalidate();
+            }
+            capture.device_enabled = device_enabled;
+            self.enabled.send_replace(devices);
+        }
         if !output || output_muted {
             let mut playback = self.playback.lock().unwrap();
             playback.streams.clear();
@@ -388,15 +415,15 @@ impl Voice {
     }
 
     pub fn capture_epoch(&self) -> u64 {
-        self.capture_epoch.load(Ordering::Acquire)
+        self.capture_state.lock().unwrap().epoch()
     }
 
     pub fn submit_pcm(&self, epoch: u64, samples: Vec<f32>) {
-        if epoch != 0
-            && epoch == self.capture_epoch()
-            && (samples.len() == FRAME || samples.len() == 2 * FRAME)
-            && self.enabled.borrow().can_capture()
-        {
+        if epoch == 0 || (samples.len() != FRAME && samples.len() != 2 * FRAME) {
+            return;
+        }
+        let capture = self.capture_state.lock().unwrap();
+        if epoch == capture.epoch() {
             match self.capture.try_send(CapturedFrame { epoch, samples }) {
                 Ok(()) => {
                     self.tx_enqueued.fetch_add(1, Ordering::Relaxed);
@@ -893,6 +920,34 @@ mod tests {
             (stats.tx_enqueued, stats.tx_full, stats.rx_packets),
             (5, 3, 0)
         );
+    }
+
+    #[test]
+    fn capture_restart_rejects_queued_frames_and_callbacks_from_the_previous_epoch() {
+        let mut io = Voice::pair();
+        io.set_channel(Some((1, CodecType::OpusVoice))).unwrap();
+        io.voice.set_devices(true, true, false, false);
+
+        for (microphone, mic_muted) in [(false, false), (true, true)] {
+            let old_epoch = io.voice.capture_epoch();
+            io.voice.submit_pcm(old_epoch, vec![0.1; FRAME]);
+            io.voice.set_devices(microphone, true, mic_muted, false);
+            assert_eq!(io.voice.capture_epoch(), 0);
+            io.voice.set_devices(true, true, false, false);
+
+            let new_epoch = io.voice.capture_epoch();
+            assert_ne!(new_epoch, 0);
+            assert_ne!(new_epoch, old_epoch);
+            let queued = io.capture.try_recv().unwrap();
+            assert!(io.packet(queued).unwrap().is_none());
+            io.voice.submit_pcm(old_epoch, vec![0.2; FRAME]);
+            assert!(io.capture.try_recv().is_err());
+            io.voice.submit_pcm(new_epoch, vec![0.3; FRAME]);
+            let fresh = io.capture.try_recv().unwrap();
+            assert!(io.packet(fresh).unwrap().is_some());
+        }
+        io.set_channel(None).unwrap();
+        assert_eq!(io.voice.capture_epoch(), 0);
     }
 
     #[test]

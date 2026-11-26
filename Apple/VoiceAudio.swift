@@ -25,24 +25,27 @@ final class VoiceAudio: ObservableObject {
     private var interruptedSettings: (mic: Bool, play: Bool)?
     #endif
     private var installedTap = false
-    private let gate = CaptureGate()
+    private var gate = CaptureGate()
     private let stereo = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
 
     func connect(_ voice: Voice) {
         disconnect()
         self.voice = voice
         #if os(macOS)
-        deviceMonitor = MacDeviceMonitor { [weak self] in self?.refreshDevices() }
-        devices.inventory = MacAudioHardware.inventory()
-        #endif
-        #if os(iOS)
+        requestedOutput = true
+        if tabSelected { activateTabAudio() }
+        #else
         observeSession()
-        #endif
         configure(mic: false, play: true)
+        #endif
     }
 
     func setMicrophone(_ on: Bool) async {
         guard let original = voice else { return }
+        #if os(macOS)
+        guard tabSelected else { return }
+        let revision = tabRevision
+        #endif
         if installedTap {
             microphone = on
             if !on { press(false) }
@@ -52,6 +55,9 @@ final class VoiceAudio: ObservableObject {
         if on {
             let allowed = await AVCaptureDevice.requestAccess(for: .audio)
             guard voice === original else { return }
+            #if os(macOS)
+            guard tabSelected, revision == tabRevision else { return }
+            #endif
             guard allowed else { message = String(localized: "Allow microphone access in System Settings to talk."); return }
         }
         #if os(iOS)
@@ -65,6 +71,9 @@ final class VoiceAudio: ObservableObject {
     }
 
     func toggleOutput() {
+        #if os(macOS)
+        guard tabSelected else { return }
+        #endif
         #if os(iOS)
         if interruptedSettings != nil {
             interruptedSettings?.play.toggle()
@@ -103,11 +112,37 @@ final class VoiceAudio: ObservableObject {
     @Published private(set) var devices = MacDeviceSelection()
     private var deviceMonitor: MacDeviceMonitor?
     private var requestedOutput = false
+    private var resumeMicrophone = false
+    private var tabSelected = true
+    private var tabRevision: UInt64 = 0
+
+    func setTabSelected(_ selected: Bool) {
+        guard tabSelected != selected else { return }
+        tabSelected = selected
+        tabRevision &+= 1
+        if selected {
+            let shortcutEnabled = UserDefaults.standard.bool(forKey: "globalTalkShortcut")
+            if globalShortcut != shortcutEnabled { globalShortcut = shortcutEnabled }
+            if voice != nil { activateTabAudio() }
+        } else {
+            resumeMicrophone = microphone
+            deviceMonitor = nil
+            stopEngine()
+        }
+    }
+
+    private func activateTabAudio() {
+        devices = MacDeviceSelection()
+        devices.inventory = MacAudioHardware.inventory()
+        deviceMonitor = MacDeviceMonitor { [weak self] in self?.refreshDevices() }
+        configure(mic: resumeMicrophone, play: requestedOutput)
+    }
 
     var hasInputRoute: Bool { installedTap }
     var hasOutputRoute: Bool { player != nil }
 
     func selectDevice(_ side: DeviceSide, uid: String?) {
+        guard tabSelected else { return }
         let previous = devices.preferred[side]
         devices.choose(side, uid: uid)
         if previous != devices.preferred[side], voice != nil, side == .output || installedTap {
@@ -116,7 +151,7 @@ final class VoiceAudio: ObservableObject {
     }
 
     func refreshDevices() {
-        guard voice != nil else { return }
+        guard tabSelected, voice != nil else { return }
         if devices.updateInventory(MacAudioHardware.inventory(), microphone: installedTap, outputActive: player != nil) {
             configure(mic: microphone, play: requestedOutput)
         }
@@ -139,7 +174,7 @@ final class VoiceAudio: ObservableObject {
         buttonHeld = false
         shortcutHeld = false
         #if os(macOS)
-        if channelAllowsTransmission && globalShortcut && microphone && output && !voiceActivated {
+        if tabSelected && channelAllowsTransmission && globalShortcut && microphone && output && !voiceActivated {
             shortcutUnavailable = !hotKey.start()
         } else {
             hotKey.stop()
@@ -150,6 +185,9 @@ final class VoiceAudio: ObservableObject {
     }
 
     func press(_ held: Bool) {
+        #if os(macOS)
+        guard tabSelected || !held else { return }
+        #endif
         buttonHeld = held
         updateTransmission()
     }
@@ -158,7 +196,7 @@ final class VoiceAudio: ObservableObject {
         #if os(iOS)
         let available = !audioInterrupted
         #else
-        let available = true
+        let available = tabSelected
         #endif
         talking = available && channelAllowsTransmission && (buttonHeld || shortcutHeld) && microphone && output && !voiceActivated
         gate.configure(held: talking, threshold: available && channelAllowsTransmission && voiceActivated && microphone && output ? threshold : nil)
@@ -167,6 +205,8 @@ final class VoiceAudio: ObservableObject {
     func disconnect() {
         #if os(macOS)
         deviceMonitor = nil
+        resumeMicrophone = false
+        requestedOutput = false
         #endif
         #if os(iOS)
         sessionObservers.forEach { NotificationCenter.default.removeObserver($0) }
@@ -226,7 +266,9 @@ final class VoiceAudio: ObservableObject {
     #endif
 
     private func stopEngine() {
-        press(false)
+        voice?.setDevices(microphone: false, output: false, micMuted: false, outputMuted: false)
+        gate.configure(held: false, threshold: nil)
+        gate = CaptureGate()
         if let observer { NotificationCenter.default.removeObserver(observer) }
         observer = nil
         if installedTap { engine?.inputNode.removeTap(onBus: 0) }
@@ -244,7 +286,7 @@ final class VoiceAudio: ObservableObject {
         #endif
         microphone = false
         output = false
-        publishDevices()
+        resetTalkControls()
     }
 
     private func configure(mic: Bool, play: Bool) {

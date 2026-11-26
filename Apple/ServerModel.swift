@@ -54,6 +54,11 @@ final class ServerModel: ObservableObject {
     @Published private(set) var joining = false
     @Published var joinError: String?
     @Published var chat = ChatState()
+    #if os(macOS)
+    @Published private(set) var unreadChat = false
+    @Published private(set) var windowTitle = "OpenTS"
+    private var tabSelected = true
+    #endif
     private(set) var generation: UInt64 = 0
     let audio = VoiceAudio()
     private let cues = ChannelSounds()
@@ -69,6 +74,19 @@ final class ServerModel: ObservableObject {
     init(channelTreeDefaults: UserDefaults = .standard) {
         self.channelTreeDefaults = channelTreeDefaults
     }
+
+    #if os(macOS)
+    func updateWindowTitle(_ title: String) {
+        if windowTitle != title { windowTitle = title }
+    }
+
+    func setTabSelected(_ selected: Bool) {
+        guard tabSelected != selected else { return }
+        tabSelected = selected
+        if selected { unreadChat = false }
+        audio.setTabSelected(selected)
+    }
+    #endif
 
     func savedChannelExpansion(for serverKey: String) -> Set<UInt64>? {
         guard let data = channelTreeDefaults.data(forKey: Self.channelExpansionKeyPrefix + serverKey),
@@ -101,7 +119,12 @@ final class ServerModel: ObservableObject {
                     return
                 }
                 let batch = connection.takeChat()
-                if !batch.isEmpty { self?.chat.receive(batch) }
+                if !batch.isEmpty, let self {
+                    self.chat.receive(batch)
+                    #if os(macOS)
+                    if !self.tabSelected { self.unreadChat = true }
+                    #endif
+                }
                 if update != previous {
                     self?.applySnapshot(update, previous: previous)
                     if update.reconnecting {
@@ -204,6 +227,10 @@ final class ServerModel: ObservableObject {
 
     func disconnect() {
         chat = ChatState()
+        #if os(macOS)
+        unreadChat = false
+        updateWindowTitle("OpenTS")
+        #endif
         if !server.isEmpty && !reconnecting { play(.disconnected) }
         audio.disconnect()
         audio.voiceActivated = false

@@ -2,6 +2,10 @@ import SwiftUI
 
 struct ServerView: View {
     @ObservedObject var model: ServerModel
+    var tabSelected = true
+    #if os(macOS)
+    var connections: ServerConnectionsSection? = nil
+    #endif
     #if DEBUG
     @State private var showingFilesPreview = false
     @State private var showingLogPreview = false
@@ -12,45 +16,69 @@ struct ServerView: View {
 
     var body: some View {
         if model.server.isEmpty {
-            Form {
-                Section("Connect to a server") {
-                    TextField("Address or server nickname", text: $model.address)
-                        .autocorrectionDisabled()
-                        #if os(iOS)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                        #endif
-                    TextField("Your nickname", text: $model.nickname)
-                    Button("Microphone test", systemImage: "mic") { testingMicrophone = true }
-                        .sheet(isPresented: $testingMicrophone) { MicrophoneTestView() }
-                    Button("Identities", systemImage: "person.text.rectangle") { managingIdentities = true }
-                        .sheet(isPresented: $managingIdentities) { IdentityImportView(selectedUID: $model.selectedIdentityUID) }
+            #if os(macOS)
+            if let connections {
+                NavigationSplitView {
+                    List { connections }
+                        .listStyle(.sidebar)
+                        .toolbar(removing: .sidebarToggle)
+                        .navigationSplitViewColumnWidth(min: 170, ideal: 245, max: 440)
+                } detail: {
+                    connectionForm
                 }
-                .disabled(model.active)
-                if model.active {
-                    ProgressView(model.reconnecting ? "Reconnecting…" : "Connecting…")
-                    Button("Cancel", action: model.disconnect)
-                } else {
-                    Button("Connect", action: model.connect)
-                        .disabled([model.address, model.nickname].contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
-                        .keyboardShortcut(.defaultAction)
-                }
-                BookmarkSection(address: $model.address, nickname: $model.nickname)
-                    .disabled(model.active)
-                #if DEBUG
-                Button("Offline files") { showingFilesPreview = true }
-                    .sheet(isPresented: $showingFilesPreview) { OfflineFilesView() }
-                Button("Offline server log") { showingLogPreview = true }
-                    .sheet(isPresented: $showingLogPreview) { OfflineServerLogView() }
-                Button("Offline permission preview") { showingPermissionPreview = true }
-                    .sheet(isPresented: $showingPermissionPreview) { OfflinePermissionsView() }
-                #endif
-                if let error = model.error { Text(error).foregroundStyle(.red) }
+                .navigationSplitViewStyle(.balanced)
+            } else {
+                connectionForm
             }
-            .formStyle(.grouped)
+            #else
+            connectionForm
+            #endif
         } else {
-            ConnectedServerView(model: model)
+            #if os(macOS)
+            ConnectedServerView(model: model, tabSelected: tabSelected, connections: connections)
+            #else
+            ConnectedServerView(model: model, tabSelected: tabSelected)
+            #endif
         }
+    }
+
+    private var connectionForm: some View {
+        Form {
+            Section("Connect to a server") {
+                TextField("Address or server nickname", text: $model.address)
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    #endif
+                TextField("Your nickname", text: $model.nickname)
+                Button("Microphone test", systemImage: "mic") { testingMicrophone = true }
+                    .sheet(isPresented: $testingMicrophone) { MicrophoneTestView() }
+                Button("Identities", systemImage: "person.text.rectangle") { managingIdentities = true }
+                    .sheet(isPresented: $managingIdentities) { IdentityImportView(selectedUID: $model.selectedIdentityUID) }
+            }
+            .disabled(model.active)
+            if model.active {
+                ProgressView(model.reconnecting ? "Reconnecting…" : "Connecting…")
+                Button("Cancel", action: model.disconnect)
+            } else {
+                Button("Connect", action: model.connect)
+                    .disabled([model.address, model.nickname].contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+                    .keyboardShortcut(.defaultAction)
+            }
+            BookmarkSection(address: $model.address, nickname: $model.nickname)
+                .disabled(model.active)
+            #if DEBUG
+            Button("Offline files") { showingFilesPreview = true }
+                .sheet(isPresented: $showingFilesPreview) { OfflineFilesView() }
+            Button("Offline server log") { showingLogPreview = true }
+                .sheet(isPresented: $showingLogPreview) { OfflineServerLogView() }
+            Button("Offline permission preview") { showingPermissionPreview = true }
+                .sheet(isPresented: $showingPermissionPreview) { OfflinePermissionsView() }
+            #endif
+            if let error = model.error { Text(error).foregroundStyle(.red) }
+        }
+        .formStyle(.grouped)
     }
 }
 
