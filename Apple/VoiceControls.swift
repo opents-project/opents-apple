@@ -85,10 +85,6 @@ struct VoiceControls: View {
     @State private var showingDiagnostics = false
     @State private var showingThreshold = false
     @GestureState private var holding = false
-    #if os(iOS)
-    @Environment(\.verticalSizeClass) private var heightClass
-    #endif
-
     private var reason: LocalizedStringKey? {
         #if os(iOS)
         if audio.audioInterrupted { return "Audio interrupted." }
@@ -109,11 +105,25 @@ struct VoiceControls: View {
                 Text(message).font(.caption).foregroundStyle(audio.standardInput ? Color.secondary : Color.red)
             }
             #if os(iOS)
-            if compact && heightClass != .compact {
-                HStack { status; Spacer() }
-                HStack { devices; settings; Spacer(); talk }
+            if compact {
+                if let reason {
+                    Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                HStack(spacing: 4) {
+                    channelRevealButton
+                    Spacer(minLength: 2)
+                    devices
+                    settings
+                    talk
+                }
             } else {
-                HStack { status; Spacer(minLength: 4); settings; devices; talk }
+                HStack {
+                    status
+                    Spacer(minLength: 4)
+                    settings
+                    devices
+                    talk
+                }
             }
             #else
             HStack {
@@ -158,6 +168,18 @@ struct VoiceControls: View {
                 #endif
             }.font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    private var channelRevealButton: some View {
+        Button(action: revealChannel) {
+            Label(model.currentRoom?.name ?? model.server, systemImage: "person.wave.2")
+                .labelStyle(.iconOnly)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: model.currentRoom?.name ?? model.server))
+        .accessibilityHint("Show current channel")
     }
 
     private var devices: some View {
