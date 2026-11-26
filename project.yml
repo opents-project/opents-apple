@@ -24,11 +24,13 @@ targetTemplates:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_NAME: OpenTS
-        PRODUCT_BUNDLE_IDENTIFIER: org.opents-project.opents
 targets:
   OpenTS-macOS:
     templates: [Client]
     platform: macOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.opents.macos
     configFiles:
       Debug: Config/macOS-Debug.xcconfig
   OpenTS-iOS:
@@ -42,6 +44,7 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
     settings:
       base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.opents.ios
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "OpenTS uses your local network to connect to the TeamSpeak server you choose on that network."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
