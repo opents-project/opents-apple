@@ -54,10 +54,10 @@ final class ServerModel: ObservableObject {
     @Published private(set) var joining = false
     @Published var joinError: String?
     @Published var chat = ChatState()
-    #if os(macOS)
     @Published private(set) var unreadChat = false
-    @Published private(set) var windowTitle = "OpenTS"
     private var tabSelected = true
+    #if os(macOS)
+    @Published private(set) var windowTitle = "OpenTS"
     #endif
     private(set) var generation: UInt64 = 0
     let audio = VoiceAudio()
@@ -79,6 +79,7 @@ final class ServerModel: ObservableObject {
     func updateWindowTitle(_ title: String) {
         if windowTitle != title { windowTitle = title }
     }
+    #endif
 
     func setTabSelected(_ selected: Bool) {
         guard tabSelected != selected else { return }
@@ -86,7 +87,6 @@ final class ServerModel: ObservableObject {
         if selected { unreadChat = false }
         audio.setTabSelected(selected)
     }
-    #endif
 
     func savedChannelExpansion(for serverKey: String) -> Set<UInt64>? {
         guard let data = channelTreeDefaults.data(forKey: Self.channelExpansionKeyPrefix + serverKey),
@@ -121,9 +121,7 @@ final class ServerModel: ObservableObject {
                 let batch = connection.takeChat()
                 if !batch.isEmpty, let self {
                     self.chat.receive(batch)
-                    #if os(macOS)
                     if !self.tabSelected { self.unreadChat = true }
-                    #endif
                 }
                 if update != previous {
                     self?.applySnapshot(update, previous: previous)
@@ -227,8 +225,8 @@ final class ServerModel: ObservableObject {
 
     func disconnect() {
         chat = ChatState()
-        #if os(macOS)
         unreadChat = false
+        #if os(macOS)
         updateWindowTitle("OpenTS")
         #endif
         if !server.isEmpty && !reconnecting { play(.disconnected) }

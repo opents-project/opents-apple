@@ -110,8 +110,8 @@ struct VoiceControls: View {
             }
             #if os(iOS)
             if compact && heightClass != .compact {
-                HStack { status; Spacer(); settings }
-                HStack { devices; Spacer(); talk }
+                HStack { status; Spacer() }
+                HStack { devices; settings; Spacer(); talk }
             } else {
                 HStack { status; Spacer(minLength: 4); settings; devices; talk }
             }

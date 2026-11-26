@@ -6,6 +6,8 @@ struct ConnectedServerView: View {
     #if os(macOS)
     var tabs: ServerTabs? = nil
     var connections: ServerConnectionsSection? = nil
+    #else
+    var mobileTabs: ServerTabs? = nil
     #endif
     @State private var selection: SidebarSelection?
     @State private var expansionServerKey: String?
@@ -34,6 +36,12 @@ struct ConnectedServerView: View {
     #endif
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var widthClass
+
+    private var usesMobileConnectionsSidebar: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && widthClass == .regular
+    }
+
+    private var usesCompactNavigation: Bool { Self.startsInChannelList || widthClass == .compact }
     #endif
 
     private static var startsInChannelList: Bool {
@@ -81,34 +89,33 @@ struct ConnectedServerView: View {
                         #if os(macOS)
                         .toolbar(removing: .sidebarToggle)
                         #else
-                        .navigationTitle(model.server)
+                        .navigationBarTitleDisplayMode(mobileTabs == nil ? .automatic : .inline)
+                        .mobileServerConnectionToolbar(tabs: tabSelected && !usesMobileConnectionsSidebar ? mobileTabs : nil,
+                                                       navigationTitle: model.server)
                         #endif
                         .navigationSplitViewColumnWidth(min: 170, ideal: 245, max: 440)
                         #if os(iOS)
                         .toolbar {
-                            if tabSelected { ToolbarItem(placement: .navigation) { channelTreeMenu } }
-                            if widthClass == .compact || Self.startsInChannelList {
-                                actions(closeChatReplacesDetail: !alongside)
+                            if tabSelected {
+                                ToolbarItem(placement: .navigation) { channelTreeMenu }
+                                if usesCompactNavigation {
+                                    actions(closeChatReplacesDetail: !alongside)
+                                }
                             }
                         }
                         #endif
                 } detail: {
-                    HStack(spacing: 0) {
-                        if !showingChat || alongside {
-                            channelDetail.frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                        if showingChat {
-                            if alongside { Divider() }
-                            ChatView(model: model, selection: $chatSelection)
-                                .frame(maxWidth: alongside ? 370 : .infinity, maxHeight: .infinity)
-                        }
-                    }
+                    detailContent(chatAlongside: alongside)
                     #if os(iOS)
-                    .navigationTitle(detailTitle(chatAlongside: alongside))
                     .navigationBarTitleDisplayMode(.inline)
+                    .mobileServerConnectionToolbar(tabs: tabSelected && !usesMobileConnectionsSidebar ? mobileTabs : nil,
+                                                   navigationTitle: detailTitle(chatAlongside: alongside),
+                                                   subtitle: detailTitle(chatAlongside: alongside))
                     #endif
                     .toolbar {
-                        if tabSelected { actions(closeChatReplacesDetail: !alongside) }
+                        if tabSelected {
+                            actions(closeChatReplacesDetail: !alongside)
+                        }
                     }
                 }
                 .navigationSplitViewStyle(.balanced)
@@ -121,6 +128,9 @@ struct ConnectedServerView: View {
                 }
                 #else
                 .environment(\.horizontalSizeClass, UIDevice.current.userInterfaceIdiom == .phone ? .compact : widthClass)
+                .onChange(of: compactColumn) { _, column in
+                    if usesCompactNavigation && column == .sidebar { showingChat = false }
+                }
                 #endif
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Divider()
@@ -243,6 +253,9 @@ struct ConnectedServerView: View {
                     }
                 }
                 #else
+                if let mobileTabs, usesMobileConnectionsSidebar {
+                    MobileServerConnectionsSection(tabs: mobileTabs)
+                }
                 Section {
                     channelRows
                 } header: {
@@ -417,7 +430,9 @@ struct ConnectedServerView: View {
             }
             .labelStyle(.iconOnly)
             #else
-            chatButton(closeChatReplacesDetail: closeChatReplacesDetail)
+            if !usesCompactNavigation || !showingChat || !closeChatReplacesDetail {
+                chatButton(closeChatReplacesDetail: closeChatReplacesDetail)
+            }
             #endif
             Menu {
                 Button("Show current channel", systemImage: "person.wave.2", action: revealCurrent)
@@ -470,14 +485,22 @@ struct ConnectedServerView: View {
                 ? .sidebar : .detail
         }
         return Button {
+            #if os(iOS)
+            if Self.startsInChannelList {
+                // Change columns without morphing the toolbar over the chat composer.
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction, toggleChat)
+                return
+            }
+            #endif
             toggleChat()
         } label: {
             #if os(macOS)
             Label(title, systemImage: icon)
                 .frame(minWidth: Self.toolbarButtonSize, minHeight: Self.toolbarButtonSize)
             #else
-            if returningToChannel { Text(title) }
-            else { Label(title, systemImage: icon) }
+            Label(title, systemImage: icon).labelStyle(.iconOnly)
             #endif
         }
     }

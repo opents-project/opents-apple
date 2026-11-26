@@ -1,4 +1,3 @@
-#if os(macOS)
 import Combine
 import SwiftUI
 
@@ -23,7 +22,9 @@ final class ServerTabs: ObservableObject {
     @Published private(set) var selected: Tab
     @Published var connection: Connection?
     private var observers: [Tab.ID: AnyCancellable] = [:]
+    #if os(macOS)
     private var audioLease: (token: UUID, target: Tab)?
+    #endif
 
     var hasActiveConnection: Bool { entries.contains { $0.model.active } }
 
@@ -36,7 +37,9 @@ final class ServerTabs: ObservableObject {
 
     func select(_ tab: Tab) {
         guard selected.id != tab.id, entries.contains(where: { $0.id == tab.id }) else { return }
+        #if os(macOS)
         finishAudioLease(restoreSelection: false)
+        #endif
         selected.model.setTabSelected(false)
         tab.model.setTabSelected(true)
         selected = tab
@@ -48,7 +51,9 @@ final class ServerTabs: ObservableObject {
             let next = index + 1 < entries.count ? index + 1 : index - 1
             select(entries[next])
         } else {
+            #if os(macOS)
             finishAudioLease()
+            #endif
         }
         tab.model.disconnect()
         observers[tab.id] = nil
@@ -56,7 +61,9 @@ final class ServerTabs: ObservableObject {
     }
 
     func requestConnection(forceNewTab: Bool = false) {
+        #if os(macOS)
         finishAudioLease()
+        #endif
         connection = makeConnection(forceNewTab: forceNewTab)
     }
 
@@ -77,7 +84,9 @@ final class ServerTabs: ObservableObject {
             select(tab)
             model = tab.model
         } else {
+            #if os(macOS)
             finishAudioLease()
+            #endif
             model = selected.model
             if model.active { model.disconnect() }
         }
@@ -89,11 +98,16 @@ final class ServerTabs: ObservableObject {
     }
 
     func disconnectAll() {
+        #if os(macOS)
         finishAudioLease(restoreSelection: false)
+        #endif
         for tab in entries { tab.model.disconnect() }
+        #if os(macOS)
         selected.model.audio.setTabSelected(true)
+        #endif
     }
 
+    #if os(macOS)
     func leaseAudio(for tab: Tab) -> UUID? {
         guard audioLease == nil, entries.contains(where: { $0.id == tab.id }),
               tab.model.active, !tab.model.server.isEmpty else { return nil }
@@ -129,6 +143,7 @@ final class ServerTabs: ObservableObject {
             if restoreSelection { selected.model.audio.setTabSelected(true) }
         }
     }
+    #endif
 
     func label(for tab: Tab) -> (title: String, subtitle: String?) {
         let title = baseTitle(for: tab)
@@ -168,7 +183,7 @@ final class ServerTabs: ObservableObject {
     }
 }
 
-
+#if os(macOS)
 struct ServerTabsView: View {
     @ObservedObject var tabs: ServerTabs
 
@@ -359,8 +374,9 @@ private struct ConnectionAudioActions: View {
     }
 }
 
+#endif
 
-private struct ServerConnectionSheet: View {
+struct ServerConnectionSheet: View {
     @State var draft: ServerTabs.Connection
     let connect: (ServerTabs.Connection, Bool) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -371,39 +387,67 @@ private struct ServerConnectionSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Form {
-                Section("Connect to a server") {
-                    TextField("Address or server nickname", text: $draft.address)
-                        .autocorrectionDisabled()
-                    TextField("Your nickname", text: $draft.nickname)
-                    Button("Identities", systemImage: "person.text.rectangle") { managingIdentities = true }
-                        .sheet(isPresented: $managingIdentities) { IdentityImportView(selectedUID: $draft.identityUID) }
+        #if os(iOS)
+        NavigationStack {
+            form
+                .navigationTitle("Connect…")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { cancelButton }
+                    ToolbarItem(placement: .confirmationAction) { connectButton }
                 }
-                BookmarkSection(address: $draft.address, nickname: $draft.nickname)
-            }
-            .formStyle(.grouped)
+        }
+        #else
+        VStack(spacing: 0) {
+            form
             Divider()
             HStack {
-                Button("Cancel", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
+                cancelButton
                 Spacer()
-                if draft.canReplace {
-                    Button("Replace Current Connection") { connect(draft, false) }
-                        .disabled(!canConnect)
-                }
-                Button {
-                    connect(draft, draft.opensNewTab)
-                } label: {
-                    if draft.opensNewTab { Text("New Connection") }
-                    else { Text("Connect") }
-                }
-                .disabled(!canConnect)
-                .keyboardShortcut(.defaultAction)
+                if draft.canReplace { replaceButton }
+                connectButton
             }
             .padding(14)
         }
         .frame(width: 480, height: 360)
+        #endif
+    }
+
+    private var form: some View {
+        Form {
+            Section("Connect to a server") {
+                TextField("Address or server nickname", text: $draft.address)
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    #endif
+                TextField("Your nickname", text: $draft.nickname)
+                Button("Identities", systemImage: "person.text.rectangle") { managingIdentities = true }
+                    .sheet(isPresented: $managingIdentities) { IdentityImportView(selectedUID: $draft.identityUID) }
+            }
+            BookmarkSection(address: $draft.address, nickname: $draft.nickname)
+            #if os(iOS)
+            if draft.canReplace { Section { replaceButton } }
+            #endif
+        }
+        .formStyle(.grouped)
+    }
+
+    private var cancelButton: some View {
+        Button("Cancel", role: .cancel) { dismiss() }
+            .keyboardShortcut(.cancelAction)
+    }
+
+    private var replaceButton: some View {
+        Button("Replace Current Connection") { connect(draft, false) }
+            .disabled(!canConnect)
+    }
+
+    private var connectButton: some View {
+        let title: LocalizedStringKey = draft.opensNewTab ? "New Connection" : "Connect"
+        return Button(title) { connect(draft, draft.opensNewTab) }
+            .disabled(!canConnect)
+            .keyboardShortcut(.defaultAction)
     }
 }
-#endif

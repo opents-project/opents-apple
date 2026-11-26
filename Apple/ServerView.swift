@@ -7,6 +7,9 @@ struct ServerView: View {
     var tabs: ServerTabs? = nil
     var connections: ServerConnectionsSection? = nil
     @AppStorage(ChannelTreeDensity.storageKey) private var channelTreeDensity = ChannelTreeDensity.standard
+    #else
+    var mobileTabs: ServerTabs? = nil
+    @Environment(\.horizontalSizeClass) private var widthClass
     #endif
     #if DEBUG
     @State private var showingFilesPreview = false
@@ -34,16 +37,39 @@ struct ServerView: View {
                 connectionForm
             }
             #else
-            connectionForm
+            if let mobileTabs, mobileTabs.entries.count > 1 {
+                if UIDevice.current.userInterfaceIdiom == .pad && widthClass == .regular {
+                    NavigationSplitView {
+                        List { MobileServerConnectionsSection(tabs: mobileTabs) }
+                            .listStyle(.sidebar)
+                            .navigationSplitViewColumnWidth(min: 170, ideal: 245, max: 440)
+                    } detail: {
+                        mobileConnectionForm(tabs: mobileTabs)
+                    }
+                    .navigationSplitViewStyle(.balanced)
+                } else {
+                    NavigationStack { mobileConnectionForm(tabs: mobileTabs) }
+                }
+            } else {
+                connectionForm
+            }
             #endif
         } else {
             #if os(macOS)
             ConnectedServerView(model: model, tabSelected: tabSelected, tabs: tabs, connections: connections)
             #else
-            ConnectedServerView(model: model, tabSelected: tabSelected)
+            ConnectedServerView(model: model, tabSelected: tabSelected, mobileTabs: mobileTabs)
             #endif
         }
     }
+
+    #if os(iOS)
+    private func mobileConnectionForm(tabs: ServerTabs) -> some View {
+        connectionForm
+            .navigationBarTitleDisplayMode(.inline)
+            .mobileServerConnectionToolbar(tabs: tabSelected ? tabs : nil)
+    }
+    #endif
 
     private var connectionForm: some View {
         Form {
@@ -55,6 +81,9 @@ struct ServerView: View {
                     .keyboardType(.URL)
                     #endif
                 TextField("Your nickname", text: $model.nickname)
+                #if os(iOS)
+                if let error = model.error { Text(error).foregroundStyle(.red) }
+                #endif
                 Button("Microphone test", systemImage: "mic") { testingMicrophone = true }
                     .sheet(isPresented: $testingMicrophone) { MicrophoneTestView() }
                 Button("Identities", systemImage: "person.text.rectangle") { managingIdentities = true }
@@ -79,7 +108,9 @@ struct ServerView: View {
             Button("Offline permission preview") { showingPermissionPreview = true }
                 .sheet(isPresented: $showingPermissionPreview) { OfflinePermissionsView() }
             #endif
+            #if os(macOS)
             if let error = model.error { Text(error).foregroundStyle(.red) }
+            #endif
         }
         .formStyle(.grouped)
     }

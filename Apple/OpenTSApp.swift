@@ -2,13 +2,11 @@ import SwiftUI
 
 @main
 struct OpenTSApp: App {
-    #if os(macOS)
     @StateObject private var tabs = ServerTabs()
+    #if os(macOS)
     @StateObject private var updater = AppUpdater()
     @AppStorage(ChannelTreeDensity.storageKey) private var channelTreeDensity = ChannelTreeDensity.standard
     @AppStorage(ServerBookmark.storageKey) private var bookmarkData = Data()
-    #else
-    @StateObject private var model = ServerModel()
     #endif
 
     var body: some Scene {
@@ -44,7 +42,7 @@ struct OpenTSApp: App {
             StatusMenu(tabs: tabs, model: tabs.selected.model, updater: updater)
         }
         #else
-        WindowGroup { ServerView(model: model) }
+        WindowGroup { MobileServerTabsView(tabs: tabs) }
         #endif
     }
 
