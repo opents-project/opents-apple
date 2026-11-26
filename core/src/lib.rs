@@ -42,6 +42,7 @@ pub struct RoomMember {
     pub name: String,
     pub is_self: bool,
     pub uid: Option<String>,
+    pub away_message: Option<String>,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -662,6 +663,7 @@ async fn run(
                 name: client.name.clone(),
                 is_self: client.id == book.own_client,
                 uid: client.uid.as_ref().map(|uid| uid.to_string()),
+                away_message: client.away_message.clone(),
             });
         }
         for names in members.values_mut() {

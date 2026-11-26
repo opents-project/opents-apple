@@ -49,7 +49,17 @@ private struct MemberPlayback: View {
             } else if mix.muted {
                 Text("Muted locally").font(.caption).foregroundStyle(.secondary)
             }
-            if isSpeaking {
+            if !member.isSelf, let awayMessage = member.awayMessage {
+                Text("Away")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(.quaternary, in: Capsule())
+                    .fixedSize()
+                    .help(awayMessage.isEmpty ? Text("Away") : Text(verbatim: awayMessage))
+                    .accessibilityValue(Text(verbatim: awayMessage))
+            } else if isSpeaking {
                 Text("Speaking")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.green)

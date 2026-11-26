@@ -3421,6 +3421,16 @@
         }
       }
     },
+    "Away": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离开"
+          }
+        }
+      }
+    },
     "Speaking": {
       "extractionState": "manual",
       "localizations": {
