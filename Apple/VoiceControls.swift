@@ -150,6 +150,7 @@ struct VoiceControls: View {
                 if let reason { Text(reason) }
                 #if os(macOS)
                 if !audio.globalShortcut { Text("⌥⇧Space off") }
+                else if !audio.microphone { Text("⌥⇧Space paused · microphone off") }
                 else if audio.shortcutUnavailable || reason != nil || audio.voiceActivated { Text("⌥⇧Space unavailable") }
                 else { Text("⌥⇧Space ready") }
                 #endif

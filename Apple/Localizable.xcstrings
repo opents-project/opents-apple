@@ -1,6 +1,16 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "⌥⇧Space paused · microphone off": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌥⇧空格键暂停 · 麦克风已关闭"
+          }
+        }
+      }
+    },
     "Server default": {
       "localizations": {
         "zh-Hans": {
