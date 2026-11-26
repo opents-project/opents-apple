@@ -18,6 +18,9 @@ struct ConnectedServerView: View {
     @State private var compactColumn = Self.startsInChannelList
         ? NavigationSplitViewColumn.sidebar : .detail
     @State private var columns = NavigationSplitViewVisibility.all
+    #if os(iOS)
+    @State private var widePhoneSplit = false
+    #endif
     @State private var showingChat = false
     @State private var chatSelection: ChatScope?
     @State private var editorTarget: ChannelEditorTarget?
@@ -36,13 +39,22 @@ struct ConnectedServerView: View {
     #endif
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var widthClass
+    @Environment(\.verticalSizeClass) private var heightClass
 
     private var usesMobileConnectionsSidebar: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && widthClass == .regular
+        widthClass == .regular && (UIDevice.current.userInterfaceIdiom == .pad || widePhoneSplit)
     }
 
-    private var usesCompactNavigation: Bool { Self.startsInChannelList || widthClass == .compact }
+    private var usesCompactNavigation: Bool { usesPhoneColumnNavigation || widthClass == .compact }
     #endif
+
+    private var usesPhoneColumnNavigation: Bool {
+        #if os(iOS)
+        Self.startsInChannelList && !widePhoneSplit
+        #else
+        false
+        #endif
+    }
 
     private static var startsInChannelList: Bool {
         #if os(iOS)
@@ -79,44 +91,77 @@ struct ConnectedServerView: View {
             : selectedMember?.member.name ?? selectedRoom?.name ?? model.server
     }
 
+    #if os(iOS)
+    @ViewBuilder private func mobileDetail(chatAlongside: Bool, splitWidth: CGFloat?) -> some View {
+        if let splitWidth {
+            detailContent(chatAlongside: chatAlongside)
+                .navigationSplitViewColumnWidth(min: splitWidth * 0.35,
+                                                ideal: splitWidth * 0.435,
+                                                max: splitWidth * 0.46)
+        } else {
+            detailContent(chatAlongside: chatAlongside)
+        }
+    }
+    #endif
+
+    private func splitSidebar(alongside: Bool, minWidth: CGFloat, idealWidth: CGFloat, maxWidth: CGFloat) -> some View {
+        sidebar
+            #if os(macOS)
+            .toolbar(removing: .sidebarToggle)
+            #else
+            .navigationBarTitleDisplayMode(mobileTabs == nil ? .automatic : .inline)
+            .mobileServerConnectionToolbar(tabs: tabSelected && !usesMobileConnectionsSidebar ? mobileTabs : nil,
+                                           navigationTitle: model.server)
+            #endif
+            .navigationSplitViewColumnWidth(min: minWidth, ideal: idealWidth, max: maxWidth)
+            #if os(iOS)
+            .toolbar {
+                if tabSelected {
+                    ToolbarItem(placement: .navigation) { channelTreeMenu }
+                    if usesCompactNavigation { actions(closeChatReplacesDetail: !alongside) }
+                }
+            }
+            #endif
+    }
+
+    private func splitDetail(alongside: Bool, splitWidth: CGFloat?) -> some View {
+        #if os(iOS)
+        mobileDetail(chatAlongside: alongside, splitWidth: splitWidth)
+            .navigationBarTitleDisplayMode(.inline)
+            .mobileServerConnectionToolbar(tabs: tabSelected && !usesMobileConnectionsSidebar ? mobileTabs : nil,
+                                           navigationTitle: detailTitle(chatAlongside: alongside),
+                                           subtitle: detailTitle(chatAlongside: alongside))
+            .toolbar {
+                if tabSelected { actions(closeChatReplacesDetail: !alongside) }
+            }
+        #else
+        detailContent(chatAlongside: alongside)
+            .toolbar {
+                if tabSelected { actions(closeChatReplacesDetail: !alongside) }
+            }
+        #endif
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let narrow = geometry.size.width < 600
             let alongside = geometry.size.width >= 980
+            #if os(iOS)
+            let widePhonePosture = UIDevice.current.userInterfaceIdiom == .phone
+                && widthClass == .regular && heightClass == .regular && geometry.size.width >= 600
+            let splitWidth: CGFloat? = widePhonePosture ? geometry.size.width : nil
+            #else
+            let splitWidth: CGFloat? = nil
+            #endif
+            let sidebarMinimumWidth = splitWidth.map { $0 * 0.55 } ?? 170
+            let sidebarIdealWidth = splitWidth.map { $0 * 0.565 } ?? 245
+            let sidebarMaximumWidth = splitWidth.map { $0 * 0.58 } ?? 440
             VStack(spacing: 0) {
                 NavigationSplitView(columnVisibility: $columns, preferredCompactColumn: $compactColumn) {
-                    sidebar
-                        #if os(macOS)
-                        .toolbar(removing: .sidebarToggle)
-                        #else
-                        .navigationBarTitleDisplayMode(mobileTabs == nil ? .automatic : .inline)
-                        .mobileServerConnectionToolbar(tabs: tabSelected && !usesMobileConnectionsSidebar ? mobileTabs : nil,
-                                                       navigationTitle: model.server)
-                        #endif
-                        .navigationSplitViewColumnWidth(min: 170, ideal: 245, max: 440)
-                        #if os(iOS)
-                        .toolbar {
-                            if tabSelected {
-                                ToolbarItem(placement: .navigation) { channelTreeMenu }
-                                if usesCompactNavigation {
-                                    actions(closeChatReplacesDetail: !alongside)
-                                }
-                            }
-                        }
-                        #endif
+                    splitSidebar(alongside: alongside, minWidth: sidebarMinimumWidth,
+                                 idealWidth: sidebarIdealWidth, maxWidth: sidebarMaximumWidth)
                 } detail: {
-                    detailContent(chatAlongside: alongside)
-                    #if os(iOS)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .mobileServerConnectionToolbar(tabs: tabSelected && !usesMobileConnectionsSidebar ? mobileTabs : nil,
-                                                   navigationTitle: detailTitle(chatAlongside: alongside),
-                                                   subtitle: detailTitle(chatAlongside: alongside))
-                    #endif
-                    .toolbar {
-                        if tabSelected {
-                            actions(closeChatReplacesDetail: !alongside)
-                        }
-                    }
+                    splitDetail(alongside: alongside, splitWidth: splitWidth)
                 }
                 .navigationSplitViewStyle(.balanced)
                 #if os(macOS)
@@ -127,9 +172,19 @@ struct ConnectedServerView: View {
                     model.updateWindowTitle(title)
                 }
                 #else
-                .environment(\.horizontalSizeClass, UIDevice.current.userInterfaceIdiom == .phone ? .compact : widthClass)
+                .environment(\.horizontalSizeClass,
+                             UIDevice.current.userInterfaceIdiom == .phone && !widePhonePosture ? .compact : widthClass)
                 .onChange(of: compactColumn) { _, column in
-                    if usesCompactNavigation && column == .sidebar { showingChat = false }
+                    if usesCompactNavigation && column == NavigationSplitViewColumn.sidebar { showingChat = false }
+                }
+                .onChange(of: widePhonePosture, initial: true) { _, split in
+                    widePhoneSplit = split
+                    if split {
+                        compactColumn = .detail
+                        if selection == nil, !showingChat, let current = model.currentChannel {
+                            locate(current)
+                        }
+                    }
                 }
                 #endif
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -481,12 +536,12 @@ struct ConnectedServerView: View {
             #if os(macOS)
             showingPushToTalk = false
             #endif
-            compactColumn = !showingChat && selection == nil && Self.startsInChannelList
+            compactColumn = !showingChat && selection == nil && usesPhoneColumnNavigation
                 ? .sidebar : .detail
         }
         return Button {
             #if os(iOS)
-            if Self.startsInChannelList {
+            if usesPhoneColumnNavigation {
                 // Change columns without morphing the toolbar over the chat composer.
                 var transaction = Transaction(animation: nil)
                 transaction.disablesAnimations = true
@@ -630,7 +685,7 @@ struct ConnectedServerView: View {
         let previous = confirmedChannel
         confirmedChannel = id
         let keepBrowsing = followingReconnect && previous != nil && selection != previous.map(SidebarSelection.channel) && selectedRoom != nil
-        let showingPhoneSidebar = Self.startsInChannelList && compactColumn == .sidebar
+        let showingPhoneSidebar = usesPhoneColumnNavigation && compactColumn == .sidebar
         locate(id, select: !keepBrowsing && !showingPhoneSidebar)
     }
 
@@ -648,7 +703,7 @@ struct ConnectedServerView: View {
         showingPushToTalk = false
         #endif
         #if os(iOS)
-        if Self.startsInChannelList || widthClass == .compact {
+        if usesCompactNavigation {
             selection = nil
             compactColumn = .sidebar
             locate(id, select: false)
