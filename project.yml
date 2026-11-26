@@ -22,6 +22,7 @@ targetTemplates:
         embed: false
     settings:
       base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_NAME: OpenTS
         PRODUCT_BUNDLE_IDENTIFIER: org.opents-project.opents
 targets:
