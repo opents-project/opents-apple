@@ -3,42 +3,60 @@ import SwiftUI
 struct LiveGroupPermissionsView: View {
     let session: Session
     let generation: UInt64
+    let initialGroup: ListedGroup?
     @Environment(\.dismiss) private var dismiss
     @State private var kind = GroupKind.server
     @State private var groups = [ListedGroup]()
     @State private var loading = true
     @State private var error: String?
 
+    init(session: Session, generation: UInt64, initialGroup: ListedGroup? = nil) {
+        self.session = session
+        self.generation = generation
+        self.initialGroup = initialGroup
+    }
+
     var body: some View {
         NavigationStack {
-            List {
-                Picker("Group type", selection: $kind) {
-                    Text("Server groups").tag(GroupKind.server)
-                    Text("Channel groups").tag(GroupKind.channel)
-                }.pickerStyle(.segmented).disabled(loading)
-                if loading { ProgressView() }
-                else if let error { Text(verbatim: error).foregroundStyle(.red) }
-                else if groups.isEmpty { Text("No groups returned.") }
-                else {
-                    ForEach(groups, id: \.id) { group in
-                        NavigationLink {
-                            GroupPermissionList(session: session, generation: generation, group: group)
-                        } label: {
-                            LabeledContent { Text(verbatim: "#\(group.id)") } label: { Text(verbatim: group.name) }
-                        }
+            if let initialGroup {
+                GroupPermissionList(session: session, generation: generation, group: initialGroup, allowsEditing: false)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
                     }
-                }
+            } else {
+                groupDirectory
             }
-            .navigationTitle("Group permissions")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
-                ToolbarItem(placement: .primaryAction) { Button("Refresh", systemImage: "arrow.clockwise") { Task { await load() } }.disabled(loading) }
-            }
-            .task(id: kind) { await load() }
         }
         #if os(macOS)
         .frame(minWidth: 440, minHeight: 420)
         #endif
+    }
+
+    private var groupDirectory: some View {
+        List {
+            Picker("Group type", selection: $kind) {
+                Text("Server groups").tag(GroupKind.server)
+                Text("Channel groups").tag(GroupKind.channel)
+            }.pickerStyle(.segmented).disabled(loading)
+            if loading { ProgressView() }
+            else if let error { Text(verbatim: error).foregroundStyle(.red) }
+            else if groups.isEmpty { Text("No groups returned.") }
+            else {
+                ForEach(groups, id: \.id) { group in
+                    NavigationLink {
+                        GroupPermissionList(session: session, generation: generation, group: group)
+                    } label: {
+                        LabeledContent { Text(verbatim: "#\(group.id)") } label: { Text(verbatim: group.name) }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Group permissions")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+            ToolbarItem(placement: .primaryAction) { Button("Refresh", systemImage: "arrow.clockwise") { Task { await load() } }.disabled(loading) }
+        }
+        .task(id: kind) { await load() }
     }
 
     @MainActor private func load() async {
@@ -57,6 +75,7 @@ private struct GroupPermissionList: View {
     let session: Session
     let generation: UInt64
     let group: ListedGroup
+    var allowsEditing = true
     @State private var permissions = [GroupPermission]()
     @State private var error: String?
     @State private var loading = true
@@ -69,19 +88,13 @@ private struct GroupPermissionList: View {
             else if permissions.isEmpty { Text("No permissions returned.") }
             else {
                 ForEach(permissions, id: \.id) { permission in
-                    Button {
-                        editor = PermissionEditorTarget(permission: permission)
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(verbatim: permission.name ?? "#\(permission.id)")
-                                if permission.negated { Text("Negated").font(.caption) }
-                                if permission.skip { Text("Skip").font(.caption) }
-                            }
-                            Spacer()
-                            Text(verbatim: String(permission.value)).foregroundStyle(.secondary)
-                        }.contentShape(Rectangle())
-                    }.buttonStyle(.plain)
+                    if allowsEditing {
+                        Button { editor = PermissionEditorTarget(permission: permission) } label: {
+                            permissionRow(permission)
+                        }.buttonStyle(.plain)
+                    } else {
+                        permissionRow(permission)
+                    }
                 }
             }
         }
@@ -89,8 +102,10 @@ private struct GroupPermissionList: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button("Refresh", systemImage: "arrow.clockwise") { Task { await load() } }.disabled(loading)
-                Button("Add permission", systemImage: "plus") { editor = PermissionEditorTarget(permission: nil) }
-                    .disabled(loading || error != nil)
+                if allowsEditing {
+                    Button("Add permission", systemImage: "plus") { editor = PermissionEditorTarget(permission: nil) }
+                        .disabled(loading || error != nil)
+                }
             }
         }
         .task { await load() }
@@ -100,6 +115,19 @@ private struct GroupPermissionList: View {
                 await load()
             }
         }
+    }
+
+    private func permissionRow(_ permission: GroupPermission) -> some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text(verbatim: permission.name ?? "#\(permission.id)")
+                if permission.negated { Text("Negated").font(.caption) }
+                if permission.skip { Text("Skip").font(.caption) }
+            }
+            Spacer()
+            Text(verbatim: String(permission.value)).foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
     }
 
     @MainActor private func load() async {

@@ -99,7 +99,8 @@ struct ChannelRows: View {
     let current: UInt64?
     @Binding var expanded: Set<UInt64>
     let audio: VoiceAudio
-    let startChat: (RoomMember) -> Void
+    let generation: UInt64
+    @Binding var selection: SidebarSelection?
 
     var body: some View {
         ForEach(nodes) { node in
@@ -108,10 +109,12 @@ struct ChannelRows: View {
                     if open { expanded.insert(node.id) } else { expanded.remove(node.id) }
                 })) {
                     if !node.room.memberDetails.isEmpty {
-                        MemberPlaybackList(members: node.room.memberDetails, audio: audio, startChat: startChat)
+                        MemberPlaybackList(members: node.room.memberDetails, audio: audio,
+                                           generation: generation, selection: $selection)
                     }
                     if let children = node.children {
-                        ChannelRows(nodes: children, current: current, expanded: $expanded, audio: audio, startChat: startChat)
+                        ChannelRows(nodes: children, current: current, expanded: $expanded, audio: audio,
+                                    generation: generation, selection: $selection)
                     }
                 } label: { link(node) }
                 .id(node.id)
@@ -122,7 +125,7 @@ struct ChannelRows: View {
     }
 
     private func link(_ node: ChannelNode) -> some View {
-        NavigationLink(value: node.id) {
+        NavigationLink(value: SidebarSelection.channel(node.id)) {
             HStack {
                 Label {
                     Text(node.room.name)

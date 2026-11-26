@@ -43,6 +43,8 @@ pub struct RoomMember {
     pub is_self: bool,
     pub uid: Option<String>,
     pub away_message: Option<String>,
+    pub server_groups: Vec<ListedGroup>,
+    pub channel_group: Option<ListedGroup>,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -659,6 +661,20 @@ async fn run(
         let book = con.get_state().map_err(|e| e.to_string())?;
         let mut members = std::collections::HashMap::<_, Vec<RoomMember>>::new();
         for client in book.clients.values() {
+            let mut server_groups: Vec<_> = client
+                .server_groups
+                .iter()
+                .map(|id| ListedGroup {
+                    kind: GroupKind::Server,
+                    id: id.0,
+                    name: book.server_groups.get(id).map_or_else(
+                        || format!("#{}", id.0),
+                        |group| group.name.clone(),
+                    ),
+                })
+                .collect();
+            server_groups.sort_unstable_by_key(|group| group.id);
+            let channel_group = client.channel_group;
             members.entry(client.channel).or_default().push(RoomMember {
                 client_id: client.id.0,
                 database_id: client.database_id.0,
@@ -666,6 +682,15 @@ async fn run(
                 is_self: client.id == book.own_client,
                 uid: client.uid.as_ref().map(|uid| uid.to_string()),
                 away_message: client.away_message.clone(),
+                server_groups,
+                channel_group: (channel_group.0 != 0).then(|| ListedGroup {
+                    kind: GroupKind::Channel,
+                    id: channel_group.0,
+                    name: book.channel_groups.get(&channel_group).map_or_else(
+                        || format!("#{}", channel_group.0),
+                        |group| group.name.clone(),
+                    ),
+                }),
             });
         }
         for names in members.values_mut() {

@@ -6,7 +6,7 @@ struct ConnectedServerView: View {
     #if os(macOS)
     var connections: ServerConnectionsSection? = nil
     #endif
-    @State private var selection: UInt64?
+    @State private var selection: SidebarSelection?
     @State private var expansionServerKey: String?
     @State private var savedExpansion: Set<UInt64> = []
     @State private var revealedAncestors: Set<UInt64> = []
@@ -20,6 +20,8 @@ struct ConnectedServerView: View {
     @State private var editorTarget: ChannelEditorTarget?
     @State private var fileTarget: ChannelFileTarget?
     @State private var showingGroupPermissions = false
+    @State private var permissionGroup: ListedGroup?
+    @State private var playbackTarget: MemberSelection?
     @State private var showingIdentity = false
     @State private var lockedRoom: Room?
     @State private var password = ""
@@ -59,7 +61,9 @@ struct ConnectedServerView: View {
     }
 
     private func detailTitle(chatAlongside: Bool) -> String {
-        showingChat && !chatAlongside ? String(localized: "Text chat") : selectedRoom?.name ?? model.server
+        showingChat && !chatAlongside
+            ? String(localized: "Text chat")
+            : selectedMember?.member.name ?? selectedRoom?.name ?? model.server
     }
 
     var body: some View {
@@ -131,8 +135,14 @@ struct ConnectedServerView: View {
             }
         }
         #endif
-        .onChange(of: selectedRoom?.id) { _, selected in
-            if selected == nil, selection != nil, let current = model.currentChannel { locate(current) }
+        .onChange(of: selection) { _, target in
+            if case .member? = target {
+                showingChat = false
+                compactColumn = .detail
+            }
+        }
+        .onChange(of: selection != nil && selectedRoom == nil && selectedMember == nil && !model.reconnecting) { _, missing in
+            if missing, let current = model.currentChannel { locate(current) }
         }
         .sheet(item: $editorTarget) { target in
             ChannelManagementView(model: model, target: target)
@@ -142,12 +152,22 @@ struct ConnectedServerView: View {
         }
         .sheet(isPresented: $showingGroupPermissions) {
             if let session = model.groupPermissionSession {
-                LiveGroupPermissionsView(session: session, generation: model.groupPermissionGeneration)
+                LiveGroupPermissionsView(session: session, generation: model.groupPermissionGeneration,
+                                         initialGroup: permissionGroup)
             }
+        }
+        .sheet(item: $playbackTarget) { target in
+            if let member = findMember(target)?.member, let voice = model.audio.voice {
+                MemberPlaybackSettings(member: member, voice: voice)
+            }
+        }
+        .onChange(of: playbackTarget.flatMap { findMember($0)?.member.clientId }) { _, client in
+            if client == nil { playbackTarget = nil }
         }
         .onChange(of: model.reconnecting) { _, reconnecting in
             if reconnecting {
                 showingGroupPermissions = false
+                playbackTarget = nil
                 fileTarget = nil
             }
         }
@@ -192,13 +212,15 @@ struct ConnectedServerView: View {
                 #else
                 Section {
                     channelRows
-                } header: { serverStatus }
+                } header: {
+                    if model.reconnecting { Label("Reconnecting…", systemImage: "arrow.clockwise") }
+                }
                 #endif
             }
             #if os(macOS)
             .environment(\.sidebarRowSize, channelTreeDensity == .compact ? .small : .medium)
             #endif
-            .contextMenu(forSelectionType: UInt64.self, menu: channelContextMenu, primaryAction: sidebarPrimaryAction)
+            .contextMenu(forSelectionType: SidebarSelection.self, menu: sidebarContextMenu, primaryAction: sidebarPrimaryAction)
             .task(id: scrollRequest) {
                 guard let request = scrollRequest else { return }
                 await Task.yield()
@@ -213,7 +235,7 @@ struct ConnectedServerView: View {
 
     private var channelRows: some View {
         ChannelRows(nodes: model.channels, current: model.currentChannel, expanded: channelExpansion,
-                    audio: model.audio, startChat: startPrivateChat)
+                    audio: model.audio, generation: model.generation, selection: $selection)
     }
 
     #if os(macOS)
@@ -228,23 +250,69 @@ struct ConnectedServerView: View {
     }
     #endif
 
-    private var sidebarPrimaryAction: ((Set<UInt64>) -> Void)? {
+    private var sidebarPrimaryAction: ((Set<SidebarSelection>) -> Void)? {
         #if os(macOS)
-        { ids in
-            if let room = ids.first.flatMap(model.room) { requestJoin(room) }
+        { items in
+            guard items.count == 1, case .channel(let id)? = items.first, let room = model.room(id) else { return }
+            requestJoin(room)
         }
         #else
         nil
         #endif
     }
 
-    @ViewBuilder private func channelContextMenu(_ ids: Set<UInt64>) -> some View {
-        if ids.isEmpty {
+    @ViewBuilder private func sidebarContextMenu(_ items: Set<SidebarSelection>) -> some View {
+        if items.isEmpty {
             channelTreeActions
-        } else if ids.count == 1, let room = ids.first.flatMap(model.room) {
-            channelRowActions(room)
+        } else if items.count == 1, let item = items.first {
+            switch item {
+            case .channel(let id):
+                if let room = model.room(id) { channelRowActions(room) }
+            case .member(let target):
+                if let member = findMember(target)?.member {
+                    if !member.isSelf, member.uid != nil {
+                        Button("Private message", systemImage: "bubble.left") {
+                            if let current = findMember(target)?.member { startPrivateChat(current) }
+                        }
+                    }
+                    if !member.isSelf, member.databaseId != 0, model.audio.voice != nil {
+                        Button("Playback settings", systemImage: "slider.horizontal.3") {
+                            if findMember(target) != nil { playbackTarget = target }
+                        }
+                    }
+                    #if os(macOS)
+                    if !member.serverGroups.isEmpty || member.channelGroup != nil {
+                        Menu("Group permissions", systemImage: "person.2.badge.gearshape") {
+                            if !member.serverGroups.isEmpty {
+                                Section("Server groups") {
+                                    ForEach(member.serverGroups, id: \.id) { group in
+                                        memberGroupButton(group, target: target)
+                                    }
+                                }
+                            }
+                            if let group = member.channelGroup {
+                                Section("Channel group") { memberGroupButton(group, target: target) }
+                            }
+                        }
+                        .disabled(model.groupPermissionSession == nil)
+                    }
+                    #endif
+                }
+            }
         }
     }
+
+    #if os(macOS)
+    private func memberGroupButton(_ group: ListedGroup, target: MemberSelection) -> some View {
+        Button {
+            guard let member = findMember(target)?.member else { return }
+            let groups = group.kind == .server ? member.serverGroups : [member.channelGroup].compactMap { $0 }
+            guard let current = groups.first(where: { $0.id == group.id }) else { return }
+            permissionGroup = current
+            showingGroupPermissions = true
+        } label: { Text(verbatim: group.name) }
+    }
+    #endif
 
     private var channelTreeMenu: some View {
         Menu {
@@ -307,17 +375,6 @@ struct ConnectedServerView: View {
         }
     }
 
-    private var serverStatus: some View {
-        HStack {
-            if model.reconnecting { Label("Reconnecting…", systemImage: "arrow.clockwise") }
-            else { Label("Connected", systemImage: "network") }
-            Spacer()
-            if let me = model.currentRoom?.memberDetails.first(where: \.isSelf) {
-                MemberConnectionQuality(member: me, voice: model.audio.voice)
-            }
-        }
-    }
-
     @ToolbarContentBuilder private func actions(closeChatReplacesDetail: Bool) -> some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
             #if os(macOS)
@@ -331,7 +388,10 @@ struct ConnectedServerView: View {
             #endif
             Menu {
                 Button("Show current channel", systemImage: "person.wave.2", action: revealCurrent)
-                Button("Group permissions", systemImage: "person.2.badge.gearshape") { showingGroupPermissions = true }
+                Button("Group permissions", systemImage: "person.2.badge.gearshape") {
+                    permissionGroup = nil
+                    showingGroupPermissions = true
+                }
                     .disabled(model.groupPermissionSession == nil)
                 Button("My Identity", systemImage: "person.text.rectangle") { showingIdentity = true }
                 Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right", action: model.disconnect)
@@ -359,7 +419,9 @@ struct ConnectedServerView: View {
     }
 
     @ViewBuilder private var channelDetail: some View {
-        if let room = selectedRoom {
+        if let result = selectedMember {
+            ServerMemberDetails(member: result.member, channel: result.room.name)
+        } else if let room = selectedRoom {
             Form {
                 if model.currentChannel == room.id {
                     Label("Current Channel", systemImage: "checkmark.circle.fill").foregroundStyle(.secondary)
@@ -380,7 +442,27 @@ struct ConnectedServerView: View {
         }
     }
 
-    private var selectedRoom: Room? { selection.flatMap(model.room) }
+    private var selectedRoom: Room? {
+        guard case .channel(let id)? = selection else { return nil }
+        return model.room(id)
+    }
+
+    private var selectedMember: (member: RoomMember, room: Room)? {
+        guard case .member(let target)? = selection else { return nil }
+        return findMember(target)
+    }
+
+    private func findMember(_ target: MemberSelection) -> (member: RoomMember, room: Room)? {
+        guard target.generation == model.generation else { return nil }
+        func find(in nodes: [ChannelNode]) -> (RoomMember, Room)? {
+            for node in nodes {
+                if let member = node.room.memberDetails.first(where: target.matches) { return (member, node.room) }
+                if let children = node.children, let match = find(in: children) { return match }
+            }
+            return nil
+        }
+        return find(in: model.channels)
+    }
 
     private func startPrivateChat(_ member: RoomMember) {
         guard let uid = member.uid else { return }
@@ -457,7 +539,7 @@ struct ConnectedServerView: View {
         guard let path = location.path, let id = path.last, id != confirmedChannel else { return }
         let previous = confirmedChannel
         confirmedChannel = id
-        let keepBrowsing = followingReconnect && previous != nil && selection != previous && selectedRoom != nil
+        let keepBrowsing = followingReconnect && previous != nil && selection != previous.map(SidebarSelection.channel) && selectedRoom != nil
         let showingPhoneSidebar = Self.startsInChannelList && compactColumn == .sidebar
         locate(id, select: !keepBrowsing && !showingPhoneSidebar)
     }
@@ -465,7 +547,7 @@ struct ConnectedServerView: View {
     private func locate(_ id: UInt64, select: Bool = true) {
         guard let path = ChannelNode.path(to: id, in: model.channels) else { return }
         revealedAncestors.formUnion(path)
-        if select { selection = id }
+        if select { selection = .channel(id) }
         scrollRequest = ChannelScrollRequest(serverKey: expansionServerKey, channel: id)
     }
 

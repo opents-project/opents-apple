@@ -1,38 +1,51 @@
 import SwiftUI
 
-struct MemberPlaybackList: View {
-    let members: [RoomMember]
-    @ObservedObject var audio: VoiceAudio
+enum SidebarSelection: Hashable {
+    case channel(UInt64)
+    case member(MemberSelection)
+}
 
-    let startChat: (RoomMember) -> Void
+struct MemberSelection: Hashable, Identifiable {
+    let clientID: UInt16
+    let databaseID: UInt64
+    let generation: UInt64
+    var id: Self { self }
 
-    var body: some View {
-        ForEach(members.filter(\.isSelf) + members.filter { !$0.isSelf }, id: \.clientId) { member in
-            MemberPlayback(member: member, audio: audio, startChat: startChat)
-                .selectionDisabled(true)
-                .id(MemberKey(voice: audio.voice.map(ObjectIdentifier.init), clientID: member.clientId, databaseID: member.databaseId))
-        }
+    init(_ member: RoomMember, generation: UInt64) {
+        clientID = member.clientId
+        databaseID = member.databaseId
+        self.generation = generation
     }
 
-    private struct MemberKey: Hashable {
-        let voice: ObjectIdentifier?
-        let clientID: UInt16
-        let databaseID: UInt64
+    func matches(_ member: RoomMember) -> Bool {
+        member.clientId == clientID && member.databaseId == databaseID
     }
 }
 
-private struct MemberPlayback: View {
+struct MemberPlaybackList: View {
+    let members: [RoomMember]
+    @ObservedObject var audio: VoiceAudio
+    let generation: UInt64
+    @Binding var selection: SidebarSelection?
+
+    var body: some View {
+        ForEach(members.filter(\.isSelf) + members.filter { !$0.isSelf }, id: \.clientId) { member in
+            let target = SidebarSelection.member(MemberSelection(member, generation: generation))
+            MemberRow(member: member, audio: audio) { selection = target }
+                .tag(target)
+        }
+    }
+}
+
+private struct MemberRow: View {
     let member: RoomMember
     @ObservedObject var audio: VoiceAudio
-    let startChat: (RoomMember) -> Void
-    @State private var mix = SpeakerMix(gain: 1, pan: 0, muted: false)
-    @State private var showingMemberDetails = false
+    let select: () -> Void
 
     private let iconWidth: CGFloat = 16
     private let summarySpacing: CGFloat = 5
 
     private var voice: Voice? { audio.voice }
-    private var canControlPlayback: Bool { !member.isSelf && member.databaseId != 0 && voice != nil }
     private var isSpeaking: Bool {
         guard let voice else { return false }
         if member.isSelf { return voice.isLocallySpeaking() }
@@ -40,11 +53,12 @@ private struct MemberPlayback: View {
     }
 
     private var nameAndStatus: some View {
-        HStack(spacing: summarySpacing) {
-            Image(systemName: member.isSelf ? "person.crop.circle.fill" : (mix.muted ? "speaker.slash" : "person"))
+        let muted = !member.isSelf && voice?.speakerMix(databaseId: member.databaseId).muted == true
+        return HStack(spacing: summarySpacing) {
+            Image(systemName: member.isSelf ? "person.crop.circle.fill" : (muted ? "speaker.slash" : "person"))
                 .frame(width: iconWidth)
                 .accessibilityLabel(member.isSelf ? Text("You") : Text("Muted locally"))
-                .accessibilityHidden(!member.isSelf && !mix.muted)
+                .accessibilityHidden(!member.isSelf && !muted)
             Text(verbatim: member.name)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -77,72 +91,45 @@ private struct MemberPlayback: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-            treeRow
-        }
-        .onAppear { refreshMix() }
-        .popover(isPresented: $showingMemberDetails, attachmentAnchor: .point(.leading)) {
-            #if os(iOS)
-            ScrollView { memberDetails }
-                .frame(idealHeight: canControlPlayback ? 420 : 320)
-                .presentationDetents(canControlPlayback ? [.large] : [.medium, .large])
-                .presentationCompactAdaptation(.sheet)
-            #else
-            memberDetails
-            #endif
-        }
-        .contextMenu {
-            if canControlPlayback {
-                Button("Playback settings", systemImage: "slider.horizontal.3", action: showMemberDetails)
-            } else {
-                Button("Connection quality for \(member.name)", systemImage: "network", action: showMemberDetails)
-            }
-            if !member.isSelf, member.uid != nil {
-                Button("Private message", systemImage: "bubble.left") { startChat(member) }
-            }
-        }
-    }
-
-    private var treeRow: some View {
-        Button(action: showMemberDetails) {
             HStack(spacing: 6) {
-                nameAndStatus.frame(maxWidth: .infinity, alignment: .leading)
-                TreeMemberQuality(member: member, voice: voice)
+                Button(action: select) {
+                    nameAndStatus.frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                MemberConnectionQuality(member: member, voice: voice)
             }
             .frame(minHeight: 24)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityHint(canControlPlayback ? Text("Playback settings") : Text("Connection quality for \(member.name)"))
     }
+}
 
-    private var memberDetails: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                if canControlPlayback {
-                    Text("Playback settings").font(.headline)
-                } else {
-                    Text("Connection quality for \(member.name)").font(.headline)
-                }
-                #if os(iOS)
-                Spacer()
-                Button("Done") { showingMemberDetails = false }
-                #endif
+struct MemberPlaybackSettings: View {
+    let member: RoomMember
+    let voice: Voice
+    @Environment(\.dismiss) private var dismiss
+    @State private var mix = SpeakerMix(gain: 1, pan: 0, muted: false)
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    playbackControls
+                } header: { Text(verbatim: member.name) }
             }
-            if canControlPlayback {
-                playbackControls
-                Divider()
-                Text("Connection quality for \(member.name)")
-                    .font(.subheadline.weight(.semibold))
+            .formStyle(.grouped)
+            .navigationTitle("Playback settings")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
-            MemberQualityFields(member: member, voice: voice)
         }
-        .frame(minWidth: 230, idealWidth: 260)
-        .padding(16)
-    }
-
-    private func showMemberDetails() {
-        refreshMix()
-        showingMemberDetails = true
+        #if os(macOS)
+        .frame(minWidth: 360, minHeight: 275)
+        #else
+        .presentationDetents([.medium, .large])
+        #endif
+        .onAppear { mix = voice.speakerMix(databaseId: member.databaseId) }
     }
 
     private var playbackControls: some View {
@@ -162,14 +149,8 @@ private struct MemberPlayback: View {
         }
     }
 
-    private func refreshMix() {
-        guard canControlPlayback, let voice else { return }
-        mix = voice.speakerMix(databaseId: member.databaseId)
-    }
-
     private func control<T>(_ path: WritableKeyPath<SpeakerMix, T>) -> Binding<T> {
         Binding(get: { mix[keyPath: path] }, set: { value in
-            guard let voice else { return }
             var updated = voice.speakerMix(databaseId: member.databaseId)
             updated[keyPath: path] = value
             apply(updated)
@@ -177,12 +158,41 @@ private struct MemberPlayback: View {
     }
 
     private func apply(_ updated: SpeakerMix) {
-        voice?.setSpeakerMix(databaseId: member.databaseId, mix: updated)
+        voice.setSpeakerMix(databaseId: member.databaseId, mix: updated)
         mix = updated
     }
 }
 
-struct MemberConnectionQuality: View {
+struct ServerMemberDetails: View {
+    let member: RoomMember
+    let channel: String
+
+    var body: some View {
+        Form {
+            Section {
+                Label {
+                    Text(verbatim: member.name).font(.title2.weight(.semibold))
+                } icon: {
+                    Image(systemName: member.isSelf ? "person.crop.circle.fill" : "person.crop.circle")
+                }
+                LabeledContent("Channel", value: channel)
+                if let away = member.awayMessage {
+                    LabeledContent("Away") { Text(verbatim: away.isEmpty ? "—" : away) }
+                }
+            }
+            Section("Groups") {
+                LabeledContent("Server groups") {
+                    let names = member.serverGroups.map(\.name)
+                    Text(verbatim: names.isEmpty ? "—" : names.joined(separator: ", "))
+                }
+                LabeledContent("Channel group") { Text(verbatim: member.channelGroup?.name ?? "—") }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct MemberConnectionQuality: View {
     let member: RoomMember
     let voice: Voice?
     @State private var showingDetails = false
@@ -210,12 +220,16 @@ struct MemberConnectionQuality: View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
             let quality = member.connectionQuality(using: voice)
             Button { showingDetails = true } label: {
-                Label(ping(quality), systemImage: "network")
-                    .labelStyle(.titleAndIcon)
-                    .font(.caption2)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                HStack(spacing: 4) {
+                    Text(verbatim: ping(quality, includeVariation: false))
+                    if let loss = treePacketLoss(quality) { Text(verbatim: loss) }
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Connection quality for \(member.name)"))
@@ -229,31 +243,6 @@ struct MemberConnectionQuality: View {
             .padding()
             .frame(minWidth: 260, idealWidth: 300)
             .presentationCompactAdaptation(.popover)
-        }
-    }
-}
-
-private struct TreeMemberQuality: View {
-    let member: RoomMember
-    let voice: Voice?
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { _ in
-            let quality = member.connectionQuality(using: voice)
-            let latency = ping(quality, includeVariation: false)
-            let packetLoss = treePacketLoss(quality)
-            HStack(spacing: 4) {
-                Text(verbatim: latency)
-                if let packetLoss {
-                    Text(verbatim: packetLoss)
-                        .accessibilityLabel(Text("Loss \(packetLoss)"))
-                }
-            }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
         }
     }
 }

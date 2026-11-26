@@ -322,6 +322,26 @@
         }
       }
     },
+    "Channel": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道"
+          }
+        }
+      }
+    },
+    "Channel group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道组"
+          }
+        }
+      }
+    },
     "Group permission": {
       "localizations": {
         "zh-Hans": {
