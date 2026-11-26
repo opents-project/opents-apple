@@ -53,7 +53,7 @@ final class ServerModel: ObservableObject {
     @Published private(set) var joining = false
     @Published var joinError: String?
     @Published var chat = ChatState()
-    private var generation: UInt64 = 0
+    private(set) var generation: UInt64 = 0
     let audio = VoiceAudio()
     private let cues = ChannelSounds()
     private var session: Session?
@@ -131,6 +131,11 @@ final class ServerModel: ObservableObject {
 
     private func refreshTransmission() {
         audio.setChannelAllowsTransmission(!reconnecting && !joining && currentRoom?.audioSupported == true)
+    }
+
+    func changeChannel(_ change: ChannelChange, generation expected: UInt64) async -> String? {
+        guard let session, !reconnecting, generation == expected else { return String(localized: "Connection interrupted") }
+        return await session.changeChannel(change: change, generation: expected)
     }
 
     func join(_ room: Room, password: String = "") {

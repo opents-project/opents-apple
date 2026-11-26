@@ -8,6 +8,7 @@ struct ConnectedServerView: View {
     @State private var columns = NavigationSplitViewVisibility.all
     @State private var showingChat = false
     @State private var chatSelection: ChatScope?
+    @State private var editorTarget: ChannelEditorTarget?
     @State private var showingIdentity = false
     @State private var lockedRoom: Room?
     @State private var password = ""
@@ -79,6 +80,9 @@ struct ConnectedServerView: View {
         #endif
         .onChange(of: selectedRoom?.id) { _, selected in
             if selected == nil, selection != nil, let current = model.currentChannel { locate(current) }
+        }
+        .sheet(item: $editorTarget) { target in
+            ChannelManagementView(model: model, target: target)
         }
         .sheet(isPresented: $showingIdentity) {
             VStack(alignment: .leading, spacing: 12) {
@@ -162,6 +166,19 @@ struct ConnectedServerView: View {
             #endif
             Menu {
                 Button("Show current channel", systemImage: "person.wave.2", action: revealCurrent)
+                Section {
+                    Button("Create channel", systemImage: "plus") {
+                        editorTarget = ChannelEditorTarget(parent: 0, room: nil, generation: model.generation)
+                    }
+                    if let room = selectedRoom {
+                        Button("Create subchannel", systemImage: "plus.rectangle.on.folder") {
+                            editorTarget = ChannelEditorTarget(parent: room.id, room: nil, generation: model.generation)
+                        }
+                        Button("Edit channel", systemImage: "pencil") {
+                            editorTarget = ChannelEditorTarget(parent: room.parent, room: room, generation: model.generation)
+                        }
+                    }
+                }.disabled(model.reconnecting)
                 Button("My Identity", systemImage: "person.text.rectangle") { showingIdentity = true }
                 Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right", action: model.disconnect)
             } label: { Label("More", systemImage: "ellipsis.circle") }

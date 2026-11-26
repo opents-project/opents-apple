@@ -1,4 +1,6 @@
+mod channel_management;
 mod chat;
+pub use channel_management::{ChannelChange, ChannelLifetime, ManagedCodec};
 mod identity;
 pub use identity::{parse_identity_export, stored_identity_uid, ImportedIdentity};
 mod member_quality;
@@ -93,6 +95,7 @@ pub struct Session {
     inbox: Arc<Mutex<chat::Inbox>>,
     messages: mpsc::Sender<chat::SendRequest>,
     joins: mpsc::Sender<JoinRequest>,
+    channel_changes: mpsc::Sender<channel_management::Request>,
     stop: Mutex<Option<oneshot::Sender<()>>>,
 }
 
@@ -108,6 +111,7 @@ impl Session {
         let inbox = Arc::new(Mutex::new(chat::Inbox::default()));
         let worker_inbox = inbox.clone();
         let (messages, chat_requests) = mpsc::channel(1);
+        let (channel_changes, changes) = mpsc::channel(1);
         let (joins, requests) = mpsc::channel(1);
         let (stop, closed) = oneshot::channel();
         std::thread::spawn(move || {
@@ -122,6 +126,7 @@ impl Session {
                         identity,
                         closed,
                         requests,
+                        changes,
                         chat_requests,
                         &worker_inbox,
                         io,
@@ -142,6 +147,7 @@ impl Session {
             inbox,
             messages,
             joins,
+            channel_changes,
             stop: Mutex::new(Some(stop)),
         })
     }
@@ -179,6 +185,24 @@ impl Session {
             .is_err()
         {
             return Some("Unable to queue the message.".into());
+        }
+        result
+            .await
+            .unwrap_or_else(|_| Some("Connection closed".into()))
+    }
+
+    pub async fn change_channel(&self, change: ChannelChange, generation: u64) -> Option<String> {
+        let (reply, result) = oneshot::channel();
+        if self
+            .channel_changes
+            .try_send(channel_management::Request {
+                change,
+                generation,
+                reply,
+            })
+            .is_err()
+        {
+            return Some("Unable to queue the channel change.".into());
         }
         result
             .await
@@ -284,6 +308,7 @@ async fn run(
     identity: String,
     mut closed: oneshot::Receiver<()>,
     mut requests: mpsc::Receiver<JoinRequest>,
+    mut changes: mpsc::Receiver<channel_management::Request>,
     mut chat_requests: mpsc::Receiver<chat::SendRequest>,
     inbox: &Mutex<chat::Inbox>,
     mut io: voice::AudioIo,
@@ -310,6 +335,9 @@ async fn run(
     let mut pending_chat: Option<(tsclientlib::MessageHandle, chat::SendRequest, String)> = None;
     let chat_deadline = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(chat_deadline);
+    let mut editing: Option<(tsclientlib::MessageHandle, oneshot::Sender<Option<String>>)> = None;
+    let edit_deadline = tokio::time::sleep(Duration::ZERO);
+    tokio::pin!(edit_deadline);
     let mut pending = None;
     let join_deadline = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(join_deadline);
@@ -383,6 +411,27 @@ async fn run(
                     Ok((handle,sender)) => {
                         pending_chat = Some((handle, request, sender));
                         chat_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(10));
+                    }
+                    Err(error) => { let _ = request.reply.send(Some(error)); }
+                }
+                continue;
+            }
+            _ = &mut edit_deadline, if editing.is_some() => {
+                if let Some((_, reply)) = editing.take() {
+                    let _ = reply.send(Some("No confirmation. Check the channel list before retrying.".into()));
+                }
+                continue;
+            }
+            request = changes.recv(), if editing.is_none() => {
+                let Some(request) = request else { break };
+                if !ready || request.generation != audio_generation {
+                    let _ = request.reply.send(Some("Connection interrupted".into()));
+                    continue;
+                }
+                match request.change.send(&mut con) {
+                    Ok(handle) => {
+                        editing = Some((handle, request.reply));
+                        edit_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(10));
                     }
                     Err(error) => { let _ = request.reply.send(Some(error)); }
                 }
@@ -473,6 +522,20 @@ async fn run(
                 }
                 continue;
             }
+            StreamItem::MessageResult(handle, result)
+                if editing.as_ref().is_some_and(|e| e.0 == handle) =>
+            {
+                if let Some((_, reply)) = editing.take() {
+                    let failure = result.err().map(|error| match error.missing_permission {
+                        Some(permission) => {
+                            format!("{} (permission {})", error.error, permission.0)
+                        }
+                        None => error.to_string(),
+                    });
+                    let _ = reply.send(failure);
+                }
+                continue;
+            }
             StreamItem::MessageResult(handle, result) => {
                 io.voice.member_quality.lock().unwrap().reply(
                     handle,
@@ -500,6 +563,9 @@ async fn run(
                     deadline
                         .as_mut()
                         .reset(tokio::time::Instant::now() + CONNECTION_TIMEOUT);
+                }
+                if let Some((_, reply)) = editing.take() {
+                    let _ = reply.send(Some("Connection interrupted".into()));
                 }
                 ready = false;
                 last_codec = None;
