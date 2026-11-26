@@ -356,13 +356,17 @@ async fn run(
     let identity = identity::read_stored(&identity)
         .ok_or_else(|| "Saved OpenTS identity is invalid".to_string())?;
     let identity_uid = identity.key().to_pub().get_uid();
-    let mut con = Connection::build(address)
+    let options = Connection::build(address)
         .identity(identity)
         .name(nickname)
         .input_hardware_enabled(false)
-        .output_hardware_enabled(false)
-        .connect()
-        .map_err(|e| e.to_string())?;
+        .output_hardware_enabled(false);
+    // Keep the signed TS3 compatibility version and report the actual Apple platform.
+    #[cfg(target_os = "macos")]
+    let options = options.version(tsproto_types::versions::Version::OS_X_3_X_X);
+    #[cfg(target_os = "ios")]
+    let options = options.version(tsproto_types::versions::Version::iOS_3_X_X);
+    let mut con = options.connect().map_err(|e| e.to_string())?;
     let deadline = tokio::time::sleep(CONNECTION_TIMEOUT);
     tokio::pin!(deadline);
     let mut files = files::Worker::default();
