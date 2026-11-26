@@ -174,8 +174,6 @@ final class VoiceAudio: ObservableObject {
 
     var hasInputRoute: Bool { installedTap }
     var hasOutputRoute: Bool { player != nil }
-    var microphoneEnabledForTab: Bool { tabSelected ? microphone : resumeMicrophone }
-    var outputEnabledForTab: Bool { tabSelected ? output : requestedOutput }
 
     func selectDevice(_ side: DeviceSide, uid: String?) {
         guard tabSelected else { return }
@@ -205,6 +203,9 @@ final class VoiceAudio: ObservableObject {
         self?.updateTransmission()
     }
     #endif
+
+    var microphoneEnabledForTab: Bool { tabSelected ? microphone : resumeMicrophone }
+    var outputEnabledForTab: Bool { tabSelected ? output : requestedOutput }
 
     private func resetTalkControls() {
         buttonHeld = false

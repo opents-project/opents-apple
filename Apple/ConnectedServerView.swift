@@ -56,6 +56,14 @@ struct ConnectedServerView: View {
         #endif
     }
 
+    private var showsBottomDeviceButtons: Bool {
+        #if os(iOS)
+        mobileTabs == nil || !usesMobileConnectionsSidebar || columns == .detailOnly
+        #else
+        false
+        #endif
+    }
+
     private static var startsInChannelList: Bool {
         #if os(iOS)
         UIDevice.current.userInterfaceIdiom == .phone
@@ -189,7 +197,8 @@ struct ConnectedServerView: View {
                 #endif
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Divider()
-                VoiceControls(model: model, audio: model.audio, compact: narrow, revealChannel: revealCurrent)
+                VoiceControls(model: model, audio: model.audio, compact: narrow, revealChannel: revealCurrent,
+                              showsDeviceButtons: showsBottomDeviceButtons)
             }
         }
         .onChange(of: location, initial: true) { old, new in
@@ -309,7 +318,7 @@ struct ConnectedServerView: View {
                 }
                 #else
                 if let mobileTabs, usesMobileConnectionsSidebar {
-                    MobileServerConnectionsSection(tabs: mobileTabs)
+                    MobileServerConnectionsSection(tabs: mobileTabs, showsAudioControls: true)
                 }
                 Section {
                     channelRows

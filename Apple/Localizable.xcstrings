@@ -2407,6 +2407,36 @@
         }
       }
     },
+    "Microphone unavailable": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "麦克风不可用"
+          }
+        }
+      }
+    },
+    "Output unavailable": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音频输出不可用"
+          }
+        }
+      }
+    },
+    "Connection: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接：%@"
+          }
+        }
+      }
+    },
     "Microphone unavailable: %@": {
       "extractionState": "manual",
       "localizations": {

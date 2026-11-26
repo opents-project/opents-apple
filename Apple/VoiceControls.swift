@@ -84,6 +84,7 @@ struct VoiceControls: View {
     @ObservedObject var audio: VoiceAudio
     let compact: Bool
     let revealChannel: () -> Void
+    var showsDeviceButtons = true
     @Environment(\.scenePhase) private var phase
     @State private var showingDiagnostics = false
     @State private var showingThreshold = false
@@ -115,7 +116,7 @@ struct VoiceControls: View {
                 HStack(spacing: 4) {
                     channelRevealButton
                     Spacer(minLength: 2)
-                    devices
+                    if showsDeviceButtons { devices }
                     settings
                     talk
                 }
@@ -124,7 +125,7 @@ struct VoiceControls: View {
                     status
                     Spacer(minLength: 4)
                     settings
-                    devices
+                    if showsDeviceButtons { devices }
                     talk
                 }
             }

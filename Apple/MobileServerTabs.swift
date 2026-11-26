@@ -133,6 +133,7 @@ struct MobileServerConnectionMenu: View {
 
 struct MobileServerConnectionsSection: View {
     @ObservedObject var tabs: ServerTabs
+    var showsAudioControls = false
 
     var body: some View {
         Section {
@@ -155,11 +156,21 @@ struct MobileServerConnectionsSection: View {
     private func connectionRow(_ tab: ServerTabs.Tab) -> some View {
         let label = tabs.label(for: tab)
         let selected = tabs.selected.id == tab.id
-        return Button {
-            tabs.select(tab)
-        } label: {
-            HStack {
-                Label {
+        let model = tab.model
+        return HStack(spacing: 2) {
+            Button {
+                tabs.select(tab)
+            } label: {
+                HStack(spacing: 8) {
+                    Group {
+                        if model.reconnecting || (model.active && model.server.isEmpty) {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "server.rack")
+                                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                        }
+                    }
+                    .frame(width: 20)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: label.title).fontWeight(selected ? .semibold : .regular)
                         if let subtitle = label.subtitle {
@@ -167,34 +178,69 @@ struct MobileServerConnectionsSection: View {
                         }
                     }
                     .lineLimit(1)
-                } icon: {
-                    if tab.model.reconnecting || (tab.model.active && tab.model.server.isEmpty) {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "server.rack")
-                            .foregroundStyle(tab.model.active ? Color.accentColor : Color.secondary)
+                    Spacer(minLength: 0)
+                    if model.unreadChat {
+                        Circle().fill(Color.accentColor).frame(width: 5, height: 5)
+                            .accessibilityLabel("Unread Messages")
                     }
                 }
-                Spacer()
-                if tab.model.unreadChat {
-                    Circle().fill(Color.accentColor).frame(width: 5, height: 5)
-                        .accessibilityLabel("Unread Messages")
-                }
-                if selected {
-                    Image(systemName: "checkmark").foregroundStyle(.tint)
-                        .accessibilityHidden(true)
-                }
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityValue(Text(model.reconnecting ? "Reconnecting…" : model.active ? "Connected" : "Disconnected"))
+            if showsAudioControls {
+                MobileConnectionAudioActions(audio: model.audio,
+                                             connectionName: label.subtitle.map { "\(label.title) · \($0)" } ?? label.title,
+                                             reconnecting: model.reconnecting)
+            }
         }
-        .buttonStyle(.plain)
+        .frame(minHeight: showsAudioControls ? 48 : 44)
+        .padding(.horizontal, 8)
+        .background(selected ? Color.accentColor.opacity(0.14) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(RoundedRectangle(cornerRadius: 8))
         .selectionDisabled()
-        .accessibilityAddTraits(selected ? .isSelected : [])
         .contextMenu {
-            Button("Disconnect", systemImage: "bolt.horizontal.circle", action: tab.model.disconnect)
-                .disabled(!tab.model.active)
+            Button("Disconnect", systemImage: "bolt.horizontal.circle", action: model.disconnect)
+                .disabled(!model.active)
             Button("Remove Connection", systemImage: "xmark", role: .destructive) { tabs.close(tab) }
         }
+    }
+}
+
+private struct MobileConnectionAudioActions: View {
+    @ObservedObject var audio: VoiceAudio
+    let connectionName: String
+    let reconnecting: Bool
+
+    var body: some View {
+        let available = audio.voice != nil && !reconnecting
+        let microphone = audio.microphoneEnabledForTab
+        let output = audio.outputEnabledForTab
+        Button {
+            Task { await audio.setMicrophone(!microphone) }
+        } label: {
+            Image(systemName: available ? (microphone ? "mic.fill" : "mic.slash.fill") : "mic.badge.xmark")
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(available ? (microphone ? Color.accentColor : Color.secondary) : Color.secondary.opacity(0.55))
+        .accessibilityLabel(available ? Text(microphone ? "Mute Microphone" : "Enable Microphone") : Text("Microphone unavailable"))
+        .accessibilityHint(Text("Connection: \(connectionName)"))
+        .disabled(!available)
+
+        Button(action: audio.toggleOutput) {
+            Image(systemName: available ? (output ? "speaker.wave.2.fill" : "speaker.slash.fill") : "speaker.slash")
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(available ? (output ? Color.accentColor : Color.secondary) : Color.secondary.opacity(0.55))
+        .accessibilityLabel(available ? Text(output ? "Mute Output" : "Enable Output") : Text("Output unavailable"))
+        .accessibilityHint(Text("Connection: \(connectionName)"))
+        .disabled(!available)
     }
 }
 #endif
