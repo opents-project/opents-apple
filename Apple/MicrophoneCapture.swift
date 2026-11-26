@@ -4,15 +4,16 @@ enum MicrophoneCapture {
     static var isAuthorized: Bool { AVCaptureDevice.authorizationStatus(for: .audio) == .authorized }
 
     #if os(iOS)
-    static func activateSession(microphone: Bool, processing: Bool) throws {
+    static func activateSession(microphone: Bool, processing: Bool, alreadyActive: Bool = false) throws {
         let session = AVAudioSession.sharedInstance()
-        if microphone {
-            try session.setCategory(.playAndRecord, mode: processing ? .voiceChat : .default,
-                                    options: [.defaultToSpeaker, .allowBluetoothHFP])
-        } else {
-            try session.setCategory(.playback)
+        let category: AVAudioSession.Category = microphone ? .playAndRecord : .playback
+        let mode: AVAudioSession.Mode = microphone && processing ? .voiceChat : .default
+        let options: AVAudioSession.CategoryOptions = microphone ? [.defaultToSpeaker, .allowBluetoothHFP] : []
+        let configurationChanged = session.category != category || session.mode != mode || session.categoryOptions != options
+        if configurationChanged {
+            try session.setCategory(category, mode: mode, options: options)
         }
-        try session.setActive(true)
+        if !alreadyActive || configurationChanged { try session.setActive(true) }
     }
     #endif
 

@@ -24,6 +24,7 @@ final class VoiceAudio: ObservableObject {
     private var sessionObservers: [NSObjectProtocol] = []
     private var interruptedSettings: (mic: Bool, play: Bool)?
     private var ownsAudioSession = false
+    private var lastEngineRecovery: ContinuousClock.Instant?
     #endif
     private var installedTap = false
     private var gate = CaptureGate()
@@ -156,6 +157,7 @@ final class VoiceAudio: ObservableObject {
         sessionObservers.removeAll()
         interruptedSettings = nil
         audioInterrupted = false
+        lastEngineRecovery = nil
         #endif
         stopEngine()
         #if os(iOS)
@@ -262,6 +264,7 @@ final class VoiceAudio: ObservableObject {
                     guard self.interruptedSettings == nil else { return }
                     self.interruptedSettings = (self.microphone, self.output)
                     self.ownsAudioSession = false
+                    self.lastEngineRecovery = nil
                     self.stopEngine()
                     self.audioInterrupted = true
                     self.microphone = self.interruptedSettings?.mic ?? false
@@ -289,9 +292,50 @@ final class VoiceAudio: ObservableObject {
             Task { @MainActor in
                 guard let self, self.tabSelected, self.tabRevision == revision, self.voice === observedVoice,
                       self.interruptedSettings == nil, self.engine != nil else { return }
-                self.configure(mic: self.microphone, play: self.output)
+                self.lastEngineRecovery = nil
+                self.configure(mic: self.microphone, play: self.output, preferVoiceProcessing: !self.standardInput)
             }
         })
+    }
+
+    private func recoverEngine(_ engine: AVAudioEngine, inputFormat: AVAudioFormat?, voice: Voice) {
+        guard !engine.isRunning, let player else { return }
+        let now = ContinuousClock.now
+        let repeated = lastEngineRecovery.map { $0.duration(to: now) < .seconds(2) } ?? false
+        lastEngineRecovery = now
+
+        if !repeated {
+            // The mixer's connection follows the output route. Reuse the input
+            // tap and converter only while their original format still matches.
+            if inputFormat == nil || inputFormat == engine.inputNode.outputFormat(forBus: 0) {
+                playbackPump?.stop()
+                player.stop()
+                playbackMeter = PlaybackQueueMeter()
+                gate.configure(held: false, threshold: nil)
+                do {
+                    try engine.start()
+                    startPlayback(player, voice: voice)
+                    resetTalkControls()
+                    return
+                } catch {
+                    // Rebuild the graph below if restarting it fails.
+                }
+            }
+            configure(mic: microphone, play: output, preferVoiceProcessing: !standardInput)
+        } else if installedTap && !standardInput {
+            configure(mic: microphone, play: output, preferVoiceProcessing: false)
+        } else {
+            let hadMicrophone = microphone
+            let failure = String(localized: "The audio configuration keeps changing.")
+            if hadMicrophone {
+                configure(mic: false, play: output, preferVoiceProcessing: false)
+                let inputFailure = String(localized: "Microphone unavailable: \(failure)")
+                message = [inputFailure, message].compactMap { $0 }.joined(separator: "\n")
+            } else {
+                stopEngine()
+                message = String(localized: "Playback unavailable: \(failure)")
+            }
+        }
     }
     #endif
 
@@ -319,20 +363,20 @@ final class VoiceAudio: ObservableObject {
         resetTalkControls()
     }
 
-    private func configure(mic: Bool, play: Bool) {
+    private func configure(mic: Bool, play: Bool, preferVoiceProcessing: Bool = true) {
         guard tabSelected, let voice else { return }
         stopEngine()
         standardInput = false
         message = nil
         requestedOutput = play
         if mic {
-            do { try startAudio(voice, mic: true, play: play); return }
+            do { try startAudio(voice, mic: true, play: play, preferVoiceProcessing: preferVoiceProcessing); return }
             catch {
                 stopEngine()
                 message = String(localized: "Microphone unavailable: \(error.localizedDescription)")
             }
         }
-        do { try startAudio(voice, mic: false, play: play) }
+        do { try startAudio(voice, mic: false, play: play, preferVoiceProcessing: false) }
         catch {
             stopEngine()
             let failure = String(localized: "Playback unavailable: \(error.localizedDescription)")
@@ -340,9 +384,9 @@ final class VoiceAudio: ObservableObject {
         }
     }
 
-    private func startAudio(_ voice: Voice, mic: Bool, play: Bool) throws {
+    private func startAudio(_ voice: Voice, mic: Bool, play: Bool, preferVoiceProcessing: Bool) throws {
         func attempt(bind: (AVAudioEngine) throws -> Void, verify: (AVAudioEngine) throws -> Void) throws {
-            if mic {
+            if mic && preferVoiceProcessing {
                 do { try start(voice, mic: true, play: play, processing: true, bind: bind, verify: verify); return }
                 catch { stopEngine() }
             }
@@ -368,7 +412,7 @@ final class VoiceAudio: ObservableObject {
     private func start(_ voice: Voice, mic: Bool, play: Bool, processing: Bool,
                        bind: (AVAudioEngine) throws -> Void, verify: (AVAudioEngine) throws -> Void) throws {
         #if os(iOS)
-        try MicrophoneCapture.activateSession(microphone: mic, processing: processing)
+        try MicrophoneCapture.activateSession(microphone: mic, processing: processing, alreadyActive: ownsAudioSession)
         ownsAudioSession = true
         #endif
         let engine = AVAudioEngine()
@@ -385,23 +429,34 @@ final class VoiceAudio: ObservableObject {
             installedTap = true
         }
         engine.connect(player, to: engine.mainMixerNode, format: stereo)
+        #if os(iOS)
+        let inputFormat = mic ? engine.inputNode.outputFormat(forBus: 0) : nil
+        #endif
         try engine.start()
         try verify(engine)
         self.player = player
         microphone = mic
         output = play
         player.volume = play ? 1 : 0
+        startPlayback(player, voice: voice)
+        publishDevices()
+        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self, weak engine] _ in
+            Task { @MainActor in
+                guard let self, let engine, self.engine === engine else { return }
+                #if os(iOS)
+                self.recoverEngine(engine, inputFormat: inputFormat, voice: voice)
+                #else
+                self.configure(mic: self.microphone, play: self.output)
+                #endif
+            }
+        }
+    }
+
+    private func startPlayback(_ player: AVAudioPlayerNode, voice: Voice) {
         let pump = VoicePlaybackPump(player: player, format: stereo, meter: playbackMeter) {
             voice.playbackFrame()
         }
         playbackPump = pump
         pump.start()
-        publishDevices()
-        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self, weak engine] _ in
-            Task { @MainActor in
-                guard let self, let engine, self.engine === engine else { return }
-                self.configure(mic: self.microphone, play: self.output)
-            }
-        }
     }
 }

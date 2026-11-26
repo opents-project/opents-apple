@@ -3719,6 +3719,17 @@
         }
       }
     },
+    "The audio configuration keeps changing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音频设备配置持续变化。"
+          }
+        }
+      }
+    },
     "Switching channel…": {
       "extractionState": "manual",
       "localizations": {
