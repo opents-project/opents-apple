@@ -62,18 +62,29 @@ enum ChannelTreeDensity: String {
 }
 #endif
 
+extension ChannelNode {
+    var isExpandable: Bool { children?.isEmpty == false || !room.memberDetails.isEmpty }
+}
+
 struct ChannelRows: View {
     let nodes: [ChannelNode]
     let current: UInt64?
     @Binding var expanded: Set<UInt64>
+    let audio: VoiceAudio
+    let startChat: (RoomMember) -> Void
 
     var body: some View {
         ForEach(nodes) { node in
-            if let children = node.children {
+            if node.isExpandable {
                 DisclosureGroup(isExpanded: Binding(get: { expanded.contains(node.id) }, set: { open in
                     if open { expanded.insert(node.id) } else { expanded.remove(node.id) }
                 })) {
-                    ChannelRows(nodes: children, current: current, expanded: $expanded)
+                    if !node.room.memberDetails.isEmpty {
+                        MemberPlaybackList(members: node.room.memberDetails, audio: audio, startChat: startChat)
+                    }
+                    if let children = node.children {
+                        ChannelRows(nodes: children, current: current, expanded: $expanded, audio: audio, startChat: startChat)
+                    }
                 } label: { link(node) }
                 .id(node.id)
             } else {

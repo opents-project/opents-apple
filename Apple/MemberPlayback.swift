@@ -8,12 +8,8 @@ struct MemberPlaybackList: View {
 
     var body: some View {
         ForEach(members.filter(\.isSelf) + members.filter { !$0.isSelf }, id: \.clientId) { member in
-            MemberPlayback(member: member, audio: audio)
-                .contextMenu {
-                    if !member.isSelf, member.uid != nil {
-                        Button("Private message", systemImage: "bubble.left") { startChat(member) }
-                    }
-                }
+            MemberPlayback(member: member, audio: audio, startChat: startChat)
+                .selectionDisabled(true)
                 .id(MemberKey(voice: audio.voice.map(ObjectIdentifier.init), clientID: member.clientId, databaseID: member.databaseId))
         }
     }
@@ -28,10 +24,10 @@ struct MemberPlaybackList: View {
 private struct MemberPlayback: View {
     let member: RoomMember
     @ObservedObject var audio: VoiceAudio
+    let startChat: (RoomMember) -> Void
     @State private var mix = SpeakerMix(gain: 1, pan: 0, muted: false)
-    @State private var showingPlaybackSettings = false
+    @State private var showingMemberDetails = false
 
-    private let settingsIconWidth: CGFloat = 14
     private let iconWidth: CGFloat = 16
     private let summarySpacing: CGFloat = 5
 
@@ -45,43 +41,27 @@ private struct MemberPlayback: View {
 
     private var nameAndStatus: some View {
         HStack(spacing: summarySpacing) {
-            Image(systemName: "slider.horizontal.3")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: settingsIconWidth)
-                .opacity(canControlPlayback ? 1 : 0)
-                .help(Text("Playback settings"))
-                .accessibilityHidden(true)
             Image(systemName: member.isSelf ? "person.crop.circle.fill" : (mix.muted ? "speaker.slash" : "person"))
                 .frame(width: iconWidth)
-                .accessibilityHidden(true)
+                .accessibilityLabel(member.isSelf ? Text("You") : Text("Muted locally"))
+                .accessibilityHidden(!member.isSelf && !mix.muted)
             Text(verbatim: member.name)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            if member.isSelf {
-                Text("You").font(.caption).foregroundStyle(.secondary).fixedSize()
-            } else if mix.muted {
-                Text("Muted locally").font(.caption).foregroundStyle(.secondary)
-            }
             if !member.isSelf, let awayMessage = member.awayMessage {
-                Text("Away")
+                Label("Away", systemImage: "moon.fill")
+                    .labelStyle(.iconOnly)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(.quaternary, in: Capsule())
                     .fixedSize()
                     .help(awayMessage.isEmpty ? Text("Away") : Text(verbatim: awayMessage))
                     .accessibilityValue(Text(verbatim: awayMessage))
             } else if isSpeaking {
-                Text("Speaking")
+                Label("Speaking", systemImage: "waveform")
+                    .labelStyle(.iconOnly)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.green)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(.green.opacity(0.12), in: Capsule())
                     .fixedSize()
-                    .accessibilityLabel(Text("Speaking"))
             }
             if member.isSelf && !audio.microphone {
                 Image(systemName: "mic.slash.fill")
@@ -97,69 +77,72 @@ private struct MemberPlayback: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-            #if os(iOS)
-            memberRow(compactQuality: true)
-            #else
-            ViewThatFits(in: .horizontal) {
-                memberRow(compactQuality: false)
-                memberRow(compactQuality: true)
-            }
-            #endif
+            treeRow
         }
         .onAppear { refreshMix() }
-        .popover(isPresented: $showingPlaybackSettings, attachmentAnchor: .point(.leading)) {
-            playbackSettings
+        .popover(isPresented: $showingMemberDetails, attachmentAnchor: .point(.leading)) {
+            #if os(iOS)
+            ScrollView { memberDetails }
+                .frame(idealHeight: canControlPlayback ? 420 : 320)
+                .presentationDetents(canControlPlayback ? [.large] : [.medium, .large])
+                .presentationCompactAdaptation(.sheet)
+            #else
+            memberDetails
+            #endif
         }
-    }
-
-    @ViewBuilder
-    private func memberRow(compactQuality: Bool) -> some View {
-        HStack(spacing: 8) {
+        .contextMenu {
             if canControlPlayback {
-                Button {
-                    refreshMix()
-                    showingPlaybackSettings = true
-                } label: {
-                    nameAndStatus
-                        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint(Text("Playback settings"))
-                .layoutPriority(1)
+                Button("Playback settings", systemImage: "slider.horizontal.3", action: showMemberDetails)
             } else {
-                nameAndStatus
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .layoutPriority(1)
+                Button("Connection quality for \(member.name)", systemImage: "network", action: showMemberDetails)
             }
-
-            qualityButton(compact: compactQuality)
+            if !member.isSelf, member.uid != nil {
+                Button("Private message", systemImage: "bubble.left") { startChat(member) }
+            }
         }
-        .frame(minHeight: 32)
     }
 
-    private func qualityButton(compact: Bool) -> some View {
-        MemberConnectionQuality(member: member, voice: voice, compact: compact)
-            .fixedSize(horizontal: true, vertical: false)
+    private var treeRow: some View {
+        Button(action: showMemberDetails) {
+            HStack(spacing: 6) {
+                nameAndStatus.frame(maxWidth: .infinity, alignment: .leading)
+                TreeMemberQuality(member: member, voice: voice)
+            }
+            .frame(minHeight: 24)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(canControlPlayback ? Text("Playback settings") : Text("Connection quality for \(member.name)"))
     }
 
-    private var playbackSettings: some View {
+    private var memberDetails: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Playback settings").font(.headline)
+                if canControlPlayback {
+                    Text("Playback settings").font(.headline)
+                } else {
+                    Text("Connection quality for \(member.name)").font(.headline)
+                }
                 #if os(iOS)
                 Spacer()
-                Button("Done") { showingPlaybackSettings = false }
+                Button("Done") { showingMemberDetails = false }
                 #endif
             }
-            playbackControls
+            if canControlPlayback {
+                playbackControls
+                Divider()
+                Text("Connection quality for \(member.name)")
+                    .font(.subheadline.weight(.semibold))
+            }
+            MemberQualityFields(member: member, voice: voice)
         }
         .frame(minWidth: 230, idealWidth: 260)
         .padding(16)
-        #if os(iOS)
-        .presentationDetents([.medium, .large])
-        .presentationCompactAdaptation(.sheet)
-        #endif
+    }
+
+    private func showMemberDetails() {
+        refreshMix()
+        showingMemberDetails = true
     }
 
     private var playbackControls: some View {
@@ -202,28 +185,7 @@ private struct MemberPlayback: View {
 struct MemberConnectionQuality: View {
     let member: RoomMember
     let voice: Voice?
-    var compact = false
     @State private var showingDetails = false
-
-    private func readQuality() -> ConnectionQuality? {
-        guard let voice else { return nil }
-        if member.isSelf { return voice.connectionQuality() }
-        return voice.memberConnectionQuality(clientId: member.clientId, databaseId: member.databaseId)
-    }
-
-    private func ping(_ quality: ConnectionQuality?) -> String {
-        guard let ping = quality?.pingMs else { return "—" }
-        let pingText = ping.formatted(.number.precision(.fractionLength(0)))
-        if let deviation = quality?.deviationMs {
-            let variation = deviation.formatted(.number.precision(.fractionLength(0...1)))
-            return "\(pingText) ± \(variation) ms"
-        }
-        return "\(pingText) ms"
-    }
-
-    private func percent(_ value: Float?) -> String? {
-        value?.formatted(.percent.precision(.fractionLength(0...1)))
-    }
 
     private func lossSummary(_ quality: ConnectionQuality?) -> String {
         if let incoming = percent(quality?.incomingLoss) {
@@ -235,28 +197,6 @@ struct MemberConnectionQuality: View {
         return "—"
     }
 
-    @ViewBuilder
-    private func rates(_ quality: ConnectionQuality?) -> some View {
-        let incoming = quality?.incomingBytesPerSecond.map { "↓ " + ConnectionUnits.rate($0) }
-        let outgoing = quality?.outgoingBytesPerSecond.map { "↑ " + ConnectionUnits.rate($0) }
-        if let incoming, let outgoing {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 5) {
-                    Text(verbatim: incoming)
-                    Text(verbatim: outgoing)
-                }
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(verbatim: incoming)
-                    Text(verbatim: outgoing)
-                }
-            }
-        } else if let incoming {
-            Text(verbatim: incoming)
-        } else if let outgoing {
-            Text(verbatim: outgoing)
-        }
-    }
-
     private func accessibilityRates(_ quality: ConnectionQuality?) -> String {
         [
             quality?.incomingBytesPerSecond.map { "↓ " + ConnectionUnits.rate($0) },
@@ -266,68 +206,104 @@ struct MemberConnectionQuality: View {
         .joined(separator: ", ")
     }
 
-    private var owner: String { member.isSelf ? String(localized: "This client") : member.name }
-
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
-            let quality = readQuality()
+            let quality = member.connectionQuality(using: voice)
             Button { showingDetails = true } label: {
-                if quality == nil {
-                    Label("—", systemImage: "network")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                } else if compact {
-                    Label(quality?.pingMs == nil ? "—" : ping(quality), systemImage: "network")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                } else {
-                    VStack(alignment: .trailing, spacing: 1) {
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 5) {
-                                Text(verbatim: ping(quality))
-                                Text(verbatim: lossSummary(quality))
-                            }
-                            VStack(alignment: .trailing, spacing: 1) {
-                                Text(verbatim: ping(quality))
-                                Text(verbatim: lossSummary(quality))
-                            }
-                        }
-                        rates(quality)
-                    }
+                Label(ping(quality), systemImage: "network")
+                    .labelStyle(.titleAndIcon)
                     .font(.caption2)
                     .monospacedDigit()
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .contentShape(Rectangle())
-                }
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Connection quality for \(member.name)"))
             .accessibilityValue(Text(verbatim: [ping(quality), lossSummary(quality), accessibilityRates(quality)].filter { !$0.isEmpty }.joined(separator: ", ")))
         }
         .popover(isPresented: $showingDetails) {
-            TimelineView(.periodic(from: .now, by: 1)) { _ in
-                let quality = readQuality()
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Connection quality for \(member.name)").font(.headline)
-                    LabeledContent("Connection owner", value: owner)
-                    LabeledContent("Ping ± variation", value: ping(quality))
-                    LabeledContent("Incoming packet loss", value: percent(quality?.incomingLoss) ?? "—")
-                    LabeledContent("Outgoing packet loss", value: percent(quality?.outgoingLoss) ?? "—")
-                    LabeledContent("Receive rate", value: quality?.incomingBytesPerSecond.map(ConnectionUnits.rate) ?? "—")
-                    LabeledContent("Send rate", value: quality?.outgoingBytesPerSecond.map(ConnectionUnits.rate) ?? "—")
-                }
-                .monospacedDigit()
-                .padding()
-                .frame(minWidth: 260, idealWidth: 300)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Connection quality for \(member.name)").font(.headline)
+                MemberQualityFields(member: member, voice: voice)
             }
+            .padding()
+            .frame(minWidth: 260, idealWidth: 300)
             .presentationCompactAdaptation(.popover)
         }
     }
+}
+
+private struct TreeMemberQuality: View {
+    let member: RoomMember
+    let voice: Voice?
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let quality = member.connectionQuality(using: voice)
+            let latency = ping(quality, includeVariation: false)
+            let packetLoss = treePacketLoss(quality)
+            HStack(spacing: 4) {
+                Text(verbatim: latency)
+                if let packetLoss {
+                    Text(verbatim: packetLoss)
+                        .accessibilityLabel(Text("Loss \(packetLoss)"))
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+}
+
+private struct MemberQualityFields: View {
+    let member: RoomMember
+    let voice: Voice?
+
+    private var owner: String { member.isSelf ? String(localized: "This client") : member.name }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let quality = member.connectionQuality(using: voice)
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Connection owner", value: owner)
+                LabeledContent("Ping ± variation", value: ping(quality))
+                LabeledContent("Incoming packet loss", value: percent(quality?.incomingLoss) ?? "—")
+                LabeledContent("Outgoing packet loss", value: percent(quality?.outgoingLoss) ?? "—")
+                LabeledContent("Receive rate", value: quality?.incomingBytesPerSecond.map(ConnectionUnits.rate) ?? "—")
+                LabeledContent("Send rate", value: quality?.outgoingBytesPerSecond.map(ConnectionUnits.rate) ?? "—")
+            }
+            .monospacedDigit()
+        }
+    }
+}
+
+private extension RoomMember {
+    func connectionQuality(using voice: Voice?) -> ConnectionQuality? {
+        guard let voice else { return nil }
+        if isSelf { return voice.connectionQuality() }
+        return voice.memberConnectionQuality(clientId: clientId, databaseId: databaseId)
+    }
+}
+
+private func ping(_ quality: ConnectionQuality?, includeVariation: Bool = true) -> String {
+    guard let ping = quality?.pingMs else { return "—" }
+    let pingText = ping.formatted(.number.precision(.fractionLength(0)))
+    if includeVariation, let deviation = quality?.deviationMs {
+        let variation = deviation.formatted(.number.precision(.fractionLength(0...1)))
+        return "\(pingText) ± \(variation) ms"
+    }
+    return "\(pingText) ms"
+}
+
+private func percent(_ value: Float?) -> String? {
+    value?.formatted(.percent.precision(.fractionLength(0...1)))
+}
+
+private func treePacketLoss(_ quality: ConnectionQuality?) -> String? {
+    let losses = [quality?.incomingLoss, quality?.outgoingLoss].compactMap { $0 }
+    guard let highest = losses.filter(\.isFinite).max(), highest > 0.01 else { return nil }
+    return highest.formatted(.percent.precision(.fractionLength(0...2)))
 }

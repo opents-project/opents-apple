@@ -158,10 +158,10 @@ struct ConnectedServerView: View {
                     Label("Reconnected", systemImage: "checkmark.circle")
                         .foregroundStyle(.secondary)
                 }
-                ChannelRows(nodes: model.channels, current: model.currentChannel, expanded: channelExpansion)
+                channelRows
                 #else
                 Section {
-                    ChannelRows(nodes: model.channels, current: model.currentChannel, expanded: channelExpansion)
+                    channelRows
                 } header: { serverStatus }
                 #endif
             }
@@ -179,6 +179,11 @@ struct ConnectedServerView: View {
                 proxy.scrollTo(request.channel, anchor: .center)
             }
         }
+    }
+
+    private var channelRows: some View {
+        ChannelRows(nodes: model.channels, current: model.currentChannel, expanded: channelExpansion,
+                    audio: model.audio, startChat: startPrivateChat)
     }
 
     private var sidebarPrimaryAction: ((Set<UInt64>) -> Void)? {
@@ -257,7 +262,7 @@ struct ConnectedServerView: View {
             else { Label("Connected", systemImage: "network") }
             Spacer()
             if let me = model.currentRoom?.memberDetails.first(where: \.isSelf) {
-                MemberConnectionQuality(member: me, voice: model.audio.voice, compact: true)
+                MemberConnectionQuality(member: me, voice: model.audio.voice)
             }
         }
     }
@@ -310,22 +315,6 @@ struct ConnectedServerView: View {
                 } else {
                     Button("Join Channel") { requestJoin(room) }.disabled(model.joining || model.reconnecting)
                 }
-                if room.subscribed || room.id == model.currentChannel || !room.members.isEmpty {
-                    Section {
-                        if room.memberDetails.isEmpty {
-                            Text("No visible members").foregroundStyle(.secondary)
-                        } else {
-                            MemberPlaybackList(members: room.memberDetails, audio: model.audio) { member in
-                                guard let uid = member.uid else { return }
-                                let peer = ChatScope.direct(clientId: member.clientId, uid: uid)
-                                model.chat.directNames[peer] = member.name
-                                chatSelection = peer
-                                showingChat = true
-                                compactColumn = .detail
-                            }
-                        }
-                    } header: { Text("Visible members (\(room.members.count))") }
-                }
                 ChannelDescription(model: model, room: room).id(room.id)
                 Button("Channel files", systemImage: "folder") { openChannelFiles(room) }
                     .disabled(model.reconnecting || model.fileSession == nil)
@@ -341,6 +330,15 @@ struct ConnectedServerView: View {
     }
 
     private var selectedRoom: Room? { selection.flatMap(model.room) }
+
+    private func startPrivateChat(_ member: RoomMember) {
+        guard let uid = member.uid else { return }
+        let peer = ChatScope.direct(clientId: member.clientId, uid: uid)
+        model.chat.directNames[peer] = member.name
+        chatSelection = peer
+        showingChat = true
+        compactColumn = .detail
+    }
 
     private var location: Location {
         Location(
@@ -374,10 +372,8 @@ struct ConnectedServerView: View {
                 var branches = Set<UInt64>()
                 func expand(_ nodes: [ChannelNode]) {
                     for node in nodes {
-                        if let children = node.children {
-                            branches.insert(node.id)
-                            expand(children)
-                        }
+                        if node.isExpandable { branches.insert(node.id) }
+                        if let children = node.children { expand(children) }
                     }
                 }
                 expand(model.channels)
@@ -417,7 +413,7 @@ struct ConnectedServerView: View {
 
     private func locate(_ id: UInt64, select: Bool = true) {
         guard let path = ChannelNode.path(to: id, in: model.channels) else { return }
-        revealedAncestors.formUnion(path.dropLast())
+        revealedAncestors.formUnion(path)
         if select { selection = id }
         scrollRequest = ChannelScrollRequest(serverKey: expansionServerKey, channel: id)
     }
@@ -425,6 +421,14 @@ struct ConnectedServerView: View {
     private func revealCurrent() {
         guard let id = model.currentChannel else { return }
         showingChat = false
+        #if os(iOS)
+        if Self.startsInChannelList || widthClass == .compact {
+            selection = nil
+            compactColumn = .sidebar
+            locate(id, select: false)
+            return
+        }
+        #endif
         locate(id)
         compactColumn = .detail
     }
