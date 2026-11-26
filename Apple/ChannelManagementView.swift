@@ -12,6 +12,9 @@ struct ChannelManagementView: View {
     let target: ChannelEditorTarget
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
+    @State private var descriptionDraft: String?
+    @State private var descriptionError: String?
+    @State private var loadingDescription = false
     @State private var lifetime: ChannelLifetime
     @State private var codec: ManagedCodec?
     @State private var passwordAction = PasswordAction.preserve
@@ -25,6 +28,7 @@ struct ChannelManagementView: View {
         self.model = model
         self.target = target
         _name = State(initialValue: target.room?.name ?? "")
+        _descriptionDraft = State(initialValue: target.room == nil ? "" : nil)
         _lifetime = State(initialValue: Self.lifetime(for: target.room))
         _codec = State(initialValue: Self.codec(for: target.room))
     }
@@ -48,7 +52,7 @@ struct ChannelManagementView: View {
     private var change: ChannelChange? {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         guard let room = target.room else {
-            return .create(parent: target.parent, name: name, lifetime: lifetime, codec: codec, password: password)
+            return .create(parent: target.parent, name: name, lifetime: lifetime, codec: codec, password: password, description: descriptionDraft ?? "")
         }
         let newPassword: String?
         switch passwordAction {
@@ -61,8 +65,20 @@ struct ChannelManagementView: View {
         let newName = name == room.name ? nil : name
         let newLifetime = lifetime == Self.lifetime(for: room) ? nil : lifetime
         let newCodec = codec == Self.codec(for: room) ? nil : codec
-        guard newName != nil || newLifetime != nil || newCodec != nil || newPassword != nil else { return nil }
-        return .edit(channel: room.id, name: newName, lifetime: newLifetime, codec: newCodec, password: newPassword)
+        let newDescription = descriptionDraft == initialDescription ? nil : descriptionDraft
+        guard newName != nil || newLifetime != nil || newCodec != nil || newPassword != nil || newDescription != nil else { return nil }
+        return .edit(channel: room.id, name: newName, lifetime: newLifetime, codec: newCodec, password: newPassword, description: newDescription)
+    }
+
+    private var initialDescription: String? {
+        target.room.flatMap { model.room($0.id)?.description }
+    }
+
+    private func loadDescription() async {
+        guard let room = target.room, initialDescription == nil, !loadingDescription else { return }
+        loadingDescription = true
+        defer { loadingDescription = false }
+        descriptionError = await model.readChannelDescription(room.id)
     }
 
     var body: some View {
@@ -95,6 +111,22 @@ struct ChannelManagementView: View {
                 if target.room == nil || passwordAction == .replace {
                     SecureField(target.room == nil ? "Password (optional)" : "New password", text: $password)
                 }
+                Section("Channel description") {
+                    if target.room == nil || initialDescription != nil || descriptionDraft != nil {
+                        TextEditor(text: Binding(
+                            get: { descriptionDraft ?? initialDescription ?? "" },
+                            set: { descriptionDraft = $0 }
+                        ))
+                        .frame(minHeight: 80)
+                        .accessibilityLabel("Channel description")
+                    } else if let descriptionError {
+                        Text(descriptionError).foregroundStyle(.secondary)
+                        Button("Retry") { Task { await loadDescription() } }.disabled(loadingDescription)
+                    } else {
+                        ProgressView().controlSize(.small)
+                            .accessibilityLabel("Loading channel description")
+                    }
+                }
                 if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             }
             .formStyle(.grouped)
@@ -117,6 +149,7 @@ struct ChannelManagementView: View {
                 }
             }
         }
+        .task { await loadDescription() }
         .interactiveDismissDisabled(saving)
         #if os(macOS)
         .frame(minWidth: 400, minHeight: 350)

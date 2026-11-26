@@ -57,6 +57,7 @@ pub struct Room {
     pub member_details: Vec<RoomMember>,
     pub subscribed: bool,
     pub password_required: bool,
+    pub description: Option<String>,
 }
 
 #[derive(Clone, Default, uniffi::Record)]
@@ -686,6 +687,7 @@ async fn run(
                     member_details,
                     subscribed: room.subscribed,
                     password_required: room.has_password.unwrap_or(false),
+                    description: room.optional_data.as_ref().map(|data| data.description.clone()),
                 }
             })
             .collect();

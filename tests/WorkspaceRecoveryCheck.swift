@@ -6,7 +6,7 @@ import Foundation
         let model = ServerModel()
         let room = Room(id: 7, parent: 0, predecessor: 0, name: "Studio", codec: "OpusVoice",
                         audioSupported: true, kind: "Permanent", members: [], memberDetails: [],
-                        subscribed: true, passwordRequired: false)
+                        subscribed: true, passwordRequired: false, description: nil)
         let live = Snapshot(server: "Local test", reconnecting: false, audioGeneration: 1, rooms: [room],
                             currentChannel: room.id, peerIds: [], identityUid: "test", error: nil)
         let lost = Snapshot(server: "", reconnecting: true, audioGeneration: 2, rooms: [],

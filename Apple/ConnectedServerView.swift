@@ -220,6 +220,7 @@ struct ConnectedServerView: View {
                         }
                     } header: { Text("Visible members (\(room.members.count))") }
                 }
+                ChannelDescription(model: model, room: room).id(room.id)
                 ChannelFilesButton(model: model, room: room).id(room.id)
                 DisclosureGroup("Channel info") {
                     LabeledContent("Audio codec", value: room.codec.replacingOccurrences(of: "Opus", with: "Opus "))
@@ -252,6 +253,43 @@ struct ConnectedServerView: View {
         guard model.currentChannel != room.id, !model.joining, !model.reconnecting else { return }
         if room.passwordRequired { password = ""; lockedRoom = room }
         else { model.join(room) }
+    }
+}
+
+private struct ChannelDescription: View {
+    @ObservedObject var model: ServerModel
+    let room: Room
+    @State private var loadError: String?
+    @State private var loading = false
+
+    var body: some View {
+        Section("Channel description") {
+            if let description = room.description {
+                if description.isEmpty {
+                    Text("No channel description").foregroundStyle(.secondary)
+                } else {
+                    Text(verbatim: description).textSelection(.enabled)
+                }
+            } else if let loadError {
+                Text(loadError).foregroundStyle(.secondary)
+                Button("Retry") { Task { await load() } }
+                    .disabled(loading || model.reconnecting)
+            } else {
+                ProgressView().controlSize(.small)
+                    .accessibilityLabel("Loading channel description")
+            }
+        }
+        .task(id: room.description == nil && !model.reconnecting) {
+            if room.description == nil && !model.reconnecting { await load() }
+        }
+    }
+
+    private func load() async {
+        guard !loading else { return }
+        loading = true
+        loadError = nil
+        defer { loading = false }
+        loadError = await model.readChannelDescription(room.id)
     }
 }
 

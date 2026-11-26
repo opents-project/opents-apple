@@ -137,6 +137,11 @@ final class ServerModel: ObservableObject {
         audio.setChannelAllowsTransmission(!reconnecting && !joining && currentRoom?.audioSupported == true)
     }
 
+    func readChannelDescription(_ id: UInt64) async -> String? {
+        let failure = await changeChannel(.readDescription(channel: id), generation: generation)
+        return failure.map { NSLocalizedString($0, comment: "Channel description request error") }
+    }
+
     func changeChannel(_ change: ChannelChange, generation expected: UInt64) async -> String? {
         guard let session, !reconnecting, generation == expected else { return String(localized: "Connection interrupted") }
         return await session.changeChannel(change: change, generation: expected)
