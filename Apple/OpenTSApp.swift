@@ -17,15 +17,20 @@ struct OpenTSApp: App {
         .defaultSize(width: 820, height: 540)
         .commands {
             CommandGroup(after: .appInfo) { UpdateMenuItem(updater: updater) }
-            CommandGroup(after: .newItem) {
-                Button("Connect…") { tabs.requestConnection(forceNewTab: tabs.hasActiveConnection) }
-                    .keyboardShortcut("t")
-            }
             CommandGroup(after: .sidebar) {
                 Toggle("Standard Channel Spacing", isOn: channelSpacingChoice(.standard))
                     .keyboardShortcut("=", modifiers: .command)
                 Toggle("Compact Channel Spacing", isOn: channelSpacingChoice(.compact))
                     .keyboardShortcut("-", modifiers: .command)
+            }
+            CommandMenu("Connections") {
+                Button("Connect…") { tabs.requestConnection(forceNewTab: tabs.hasActiveConnection) }
+                    .keyboardShortcut("s", modifiers: .command)
+                Button("Disconnect from Current") { tabs.selected.model.disconnect() }
+                    .keyboardShortcut("d", modifiers: .command)
+                    .disabled(!tabs.selected.model.active)
+                Button("Disconnect from All", action: tabs.disconnectAll)
+                    .disabled(!tabs.hasActiveConnection)
             }
             CommandMenu("Bookmarks") {
                 let bookmarks = ServerBookmark.saved(from: bookmarkData)

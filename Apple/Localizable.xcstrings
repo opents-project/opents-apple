@@ -21,6 +21,26 @@
         }
       }
     },
+    "Disconnect from Current": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "断开当前连接"
+          }
+        }
+      }
+    },
+    "Disconnect from All": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "断开全部连接"
+          }
+        }
+      }
+    },
     "New Connection": {
       "localizations": {
         "zh-Hans": {
