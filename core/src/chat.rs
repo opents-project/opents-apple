@@ -2,17 +2,28 @@ use std::collections::VecDeque;
 use tokio::sync::oneshot;
 use tsclientlib::{events::Event, ClientId, MessageTarget};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, uniffi::Enum)]
+#[derive(Clone, Debug, Eq, PartialEq, uniffi::Enum)]
 pub enum ChatScope {
     Server,
     Channel { id: u64 },
+    Direct { client_id: u16, uid: String },
 }
 
 impl ChatScope {
-    pub(crate) fn target(self, current: Option<u64>) -> Result<MessageTarget, String> {
+    pub(crate) fn target(
+        &self,
+        current: Option<u64>,
+        peer_uid: Option<&str>,
+    ) -> Result<MessageTarget, String> {
         match self {
             Self::Server => Ok(MessageTarget::Server),
-            Self::Channel { id } if current == Some(id) => Ok(MessageTarget::Channel),
+            Self::Channel { id } if current == Some(*id) => Ok(MessageTarget::Channel),
+            Self::Direct { client_id, uid }
+                if !uid.is_empty() && peer_uid == Some(uid.as_str()) =>
+            {
+                Ok(MessageTarget::Client(ClientId(*client_id)))
+            }
+            Self::Direct { .. } => Err("The recipient is no longer available.".into()),
             Self::Channel { .. } => Err("Your current channel has changed.".into()),
         }
     }
@@ -53,7 +64,13 @@ impl Inbox {
         });
     }
 
-    pub fn receive(&mut self, events: Vec<Event>, own: ClientId, channel: Option<u64>) {
+    pub fn receive(
+        &mut self,
+        events: Vec<Event>,
+        own: ClientId,
+        channel: Option<u64>,
+        peer_uid: impl Fn(ClientId) -> Option<String>,
+    ) {
         for event in events {
             if let Event::Message {
                 target,
@@ -67,6 +84,20 @@ impl Inbox {
                 let scope = match (target, channel) {
                     (MessageTarget::Server, _) => ChatScope::Server,
                     (MessageTarget::Channel, Some(id)) => ChatScope::Channel { id },
+                    (MessageTarget::Client(to), _) if to == own => {
+                        let Some(uid) = invoker
+                            .uid
+                            .as_ref()
+                            .map(|u| u.to_string())
+                            .or_else(|| peer_uid(invoker.id))
+                        else {
+                            continue;
+                        };
+                        ChatScope::Direct {
+                            client_id: invoker.id.0,
+                            uid,
+                        }
+                    }
                     _ => continue,
                 };
                 self.append(scope, invoker.name, message);
@@ -115,18 +146,27 @@ mod tests {
             ],
             ClientId(1),
             Some(42),
+            |_| Some("peer".into()),
         );
         inbox.receive(
             vec![message(MessageTarget::Channel, 2)],
             ClientId(1),
             Some(7),
+            |_| None,
         );
         let lines = inbox.drain();
         assert_eq!(
-            lines.iter().map(|line| line.scope).collect::<Vec<_>>(),
+            lines
+                .iter()
+                .map(|line| line.scope.clone())
+                .collect::<Vec<_>>(),
             vec![
                 ChatScope::Server,
                 ChatScope::Channel { id: 42 },
+                ChatScope::Direct {
+                    client_id: 2,
+                    uid: "peer".into()
+                },
                 ChatScope::Channel { id: 7 }
             ]
         );
@@ -137,18 +177,30 @@ mod tests {
     #[test]
     fn send_confirmed_or_rejected_by_mock_server() {
         let scope = ChatScope::Channel { id: 42 };
-        assert!(scope.target(Some(7)).is_err());
-        assert!(matches!(scope.target(Some(42)), Ok(MessageTarget::Channel)));
+        assert!(scope.target(Some(7), None).is_err());
         assert!(matches!(
-            ChatScope::Server.target(None),
+            scope.target(Some(42), None),
+            Ok(MessageTarget::Channel)
+        ));
+        assert!(matches!(
+            ChatScope::Server.target(None, None),
             Ok(MessageTarget::Server)
+        ));
+        let direct = ChatScope::Direct {
+            client_id: 2,
+            uid: "peer".into(),
+        };
+        assert!(direct.target(None, Some("reused")).is_err());
+        assert!(matches!(
+            direct.target(None, Some("peer")),
+            Ok(MessageTarget::Client(ClientId(2)))
         ));
         let mut inbox = Inbox::default();
         for failure in [None, Some("Insufficient permissions".to_owned())] {
             let (reply, mut result) = oneshot::channel();
             inbox.finish(
                 SendRequest {
-                    scope,
+                    scope: scope.clone(),
                     text: "hello".into(),
                     generation: 0,
                     reply,
@@ -160,6 +212,9 @@ mod tests {
         }
         let lines = inbox.drain();
         assert_eq!(lines.len(), 1);
-        assert_eq!((lines[0].scope, lines[0].text.as_str()), (scope, "hello"));
+        assert_eq!(
+            (lines[0].scope.clone(), lines[0].text.as_str()),
+            (scope, "hello")
+        );
     }
 }

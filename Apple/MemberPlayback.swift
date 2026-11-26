@@ -4,9 +4,16 @@ struct MemberPlaybackList: View {
     let members: [RoomMember]
     @ObservedObject var audio: VoiceAudio
 
+    let startChat: (RoomMember) -> Void
+
     var body: some View {
         ForEach(members.filter(\.isSelf) + members.filter { !$0.isSelf }, id: \.clientId) { member in
             MemberPlayback(member: member, audio: audio)
+                .contextMenu {
+                    if !member.isSelf, member.uid != nil {
+                        Button("Private message", systemImage: "bubble.left") { startChat(member) }
+                    }
+                }
                 .id(MemberKey(voice: audio.voice.map(ObjectIdentifier.init), clientID: member.clientId, databaseID: member.databaseId))
         }
     }

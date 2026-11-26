@@ -35,6 +35,7 @@ pub struct RoomMember {
     pub database_id: u64,
     pub name: String,
     pub is_self: bool,
+    pub uid: Option<String>,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -368,7 +369,12 @@ async fn run(
                     if !ready || request.generation != audio_generation { return Err("Connection interrupted".into()); }
                     let book = con.get_state().map_err(|e| e.to_string())?;
                     let me = book.clients.get(&book.own_client).ok_or("Client is not ready")?;
-                    let target = request.scope.target(Some(me.channel.0))?;
+                    let uid = match &request.scope {
+                        ChatScope::Direct { client_id, .. } => book.clients.get(&tsclientlib::ClientId(*client_id))
+                            .and_then(|client| client.uid.as_ref()).map(|uid| uid.to_string()),
+                        _ => None,
+                    };
+                    let target = request.scope.target(Some(me.channel.0), uid.as_deref())?;
                     let sender = me.name.clone();
                     let handle = book.send_message(target, &request.text).send_with_result(&mut con).map_err(|e| e.to_string())?;
                     Ok((handle, sender))
@@ -483,10 +489,11 @@ async fn run(
                 );
                 let book = con.get_state().map_err(|e| e.to_string())?;
                 let current = book.clients.get(&book.own_client).map(|me| me.channel.0);
-                inbox
-                    .lock()
-                    .unwrap()
-                    .receive(events, book.own_client, current);
+                inbox.lock().unwrap().receive(events, book.own_client, current, |id| {
+                    book.clients.get(&id)
+                        .and_then(|client| client.uid.as_ref())
+                        .map(|uid| uid.to_string())
+                });
             }
             StreamItem::DisconnectedTemporarily(_) => {
                 if ready {
@@ -519,6 +526,7 @@ async fn run(
                 database_id: client.database_id.0,
                 name: client.name.clone(),
                 is_self: client.id == book.own_client,
+                uid: client.uid.as_ref().map(|uid| uid.to_string()),
             });
         }
         for names in members.values_mut() {

@@ -7,6 +7,7 @@ struct ConnectedServerView: View {
     @State private var compactColumn = NavigationSplitViewColumn.detail
     @State private var columns = NavigationSplitViewVisibility.all
     @State private var showingChat = false
+    @State private var chatSelection: ChatScope?
     @State private var showingIdentity = false
     @State private var lockedRoom: Room?
     @State private var password = ""
@@ -42,7 +43,7 @@ struct ConnectedServerView: View {
                         }
                         if showingChat {
                             if alongside { Divider() }
-                            ChatView(model: model)
+                            ChatView(model: model, selection: $chatSelection)
                                 .frame(maxWidth: alongside ? 370 : .infinity, maxHeight: .infinity)
                         }
                     }
@@ -180,7 +181,14 @@ struct ConnectedServerView: View {
                         if room.memberDetails.isEmpty {
                             Text("No visible members").foregroundStyle(.secondary)
                         } else {
-                            MemberPlaybackList(members: room.memberDetails, audio: model.audio)
+                            MemberPlaybackList(members: room.memberDetails, audio: model.audio) { member in
+                                guard let uid = member.uid else { return }
+                                let peer = ChatScope.direct(clientId: member.clientId, uid: uid)
+                                model.chat.directNames[peer] = member.name
+                                chatSelection = peer
+                                showingChat = true
+                                compactColumn = .detail
+                            }
                         }
                     } header: { Text("Visible members (\(room.members.count))") }
                 }

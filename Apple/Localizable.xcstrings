@@ -1,6 +1,46 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "The recipient is no longer available.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对方已离线或身份已变更。"
+          }
+        }
+      }
+    },
+    "Private message to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "私聊：%@"
+          }
+        }
+      }
+    },
+    "Private messages": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "私聊"
+          }
+        }
+      }
+    },
+    "Private message": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "私聊"
+          }
+        }
+      }
+    },
     "Reconnected": {
       "localizations": {
         "zh-Hans": {

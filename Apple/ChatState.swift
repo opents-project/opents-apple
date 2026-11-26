@@ -2,11 +2,17 @@ import Foundation
 
 struct ChatState {
     private(set) var lines: [ChatLine] = []
+    var directNames: [ChatScope: String] = [:]
     var drafts: [ChatScope: String] = [:]
     var errors: [ChatScope: String] = [:]
     var sending: ChatScope?
 
     mutating func receive(_ batch: [ChatLine]) {
+        for line in batch {
+            if case .direct = line.scope, directNames[line.scope] == nil {
+                directNames[line.scope] = line.sender
+            }
+        }
         lines.append(contentsOf: batch)
         if lines.count > 500 { lines.removeFirst(lines.count - 500) }
     }

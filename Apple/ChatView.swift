@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ChatView: View {
     @ObservedObject var model: ServerModel
-    @State private var serverChat = false
+    @Binding var selection: ChatScope?
     @FocusState private var composing: Bool
 
     #if os(iOS)
@@ -18,34 +18,61 @@ struct ChatView: View {
     }
 
     private var scope: ChatScope? {
-        serverChat ? .server : model.currentChannel.map { .channel(id: $0) }
+        selection ?? model.currentChannel.map { .channel(id: $0) }
+    }
+
+    private var destination: String {
+        switch selection {
+        case .server: return model.server
+        case .direct: return selection.flatMap { model.chat.directNames[$0] } ?? ""
+        default: return model.currentRoom?.name ?? ""
+        }
+    }
+
+    private var recipientLabel: LocalizedStringKey {
+        switch selection {
+        case .server: return "To server: \(destination)"
+        case .direct: return "Private message to \(destination)"
+        default: return "To channel: \(destination)"
+        }
+    }
+
+    private var destinations: some View {
+        Menu {
+            Button("Current channel") { selection = nil }
+            Button("Server") { selection = .server }
+            if !model.chat.directNames.isEmpty {
+                Section("Private messages") {
+                    ForEach(model.chat.directNames.keys.sorted {
+                        model.chat.directNames[$0, default: ""] < model.chat.directNames[$1, default: ""]
+                    }, id: \.self) { peer in
+                        Button(model.chat.directNames[peer, default: ""]) { selection = peer }
+                    }
+                }
+            }
+        } label: {
+            Label(recipientLabel, systemImage: "bubble.left.and.bubble.right")
+                .lineLimit(1).truncationMode(.middle)
+        }
+        .accessibilityLabel("Chat destination")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !shortLayout {
-                Picker("Chat destination", selection: $serverChat) {
-                    Text("Current channel").tag(false)
-                    Text("Server").tag(true)
-                }.pickerStyle(.segmented)
+                if model.chat.directNames.isEmpty {
+                    Picker("Chat destination", selection: $selection) {
+                        Text("Current channel").tag(nil as ChatScope?)
+                        Text("Server").tag(Optional(ChatScope.server))
+                    }.pickerStyle(.segmented)
+                } else { destinations }
             }
             if let scope {
                 ChatTranscript(lines: model.chat.transcript(for: scope))
                     .id(scope)
                 if let error = model.chat.errors[scope] { Text(error).font(.caption).foregroundStyle(.red) }
-                let destination = serverChat ? model.server : model.currentRoom?.name ?? ""
                 HStack {
-                    if shortLayout {
-                        Menu {
-                            Button(model.currentRoom?.name ?? String(localized: "Current channel")) { serverChat = false }
-                            Button(model.server) { serverChat = true }
-                        } label: {
-                            Label(destination, systemImage: serverChat ? "server.rack" : "bubble.left")
-                                .lineLimit(1).truncationMode(.middle)
-                        }
-                        .frame(maxWidth: 140)
-                        .accessibilityLabel("Chat destination")
-                    }
+                    if shortLayout { destinations.frame(maxWidth: 140) }
                     ChatDraftField(model: model, scope: scope, destination: destination, focus: $composing)
                         .id(scope)
                     #if os(iOS)
@@ -63,7 +90,7 @@ struct ChatView: View {
                 .accessibilityLabel(Text("Message to \(destination)"))
                 // The placeholder disappears while typing; keep the recipient visible.
                 if !shortLayout {
-                    Text(serverChat ? "To server: \(destination)" : "To channel: \(destination)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(recipientLabel).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
         }
