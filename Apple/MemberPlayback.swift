@@ -107,11 +107,7 @@ private struct MemberPlayback: View {
                     .layoutPriority(1)
             }
 
-            #if os(macOS)
-            if !member.isSelf { qualityButton(compact: compactQuality) }
-            #else
             qualityButton(compact: compactQuality)
-            #endif
         }
         .frame(minHeight: 32)
     }

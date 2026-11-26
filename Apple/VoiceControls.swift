@@ -114,9 +114,6 @@ struct VoiceControls: View {
             HStack {
                 status
                 Spacer(minLength: 4)
-                if let me = model.currentRoom?.memberDetails.first(where: \.isSelf) {
-                    MemberConnectionQuality(member: me, voice: audio.voice, compact: true)
-                }
                 settings
                 talk
             }
