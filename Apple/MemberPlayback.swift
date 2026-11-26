@@ -29,7 +29,11 @@ private struct MemberPlayback: View {
     let member: RoomMember
     @ObservedObject var audio: VoiceAudio
     @State private var mix = SpeakerMix(gain: 1, pan: 0, muted: false)
-    @State private var expanded = false
+    @State private var showingPlaybackSettings = false
+
+    private let settingsIconWidth: CGFloat = 14
+    private let iconWidth: CGFloat = 16
+    private let summarySpacing: CGFloat = 5
 
     private var voice: Voice? { audio.voice }
     private var canControlPlayback: Bool { !member.isSelf && member.databaseId != 0 && voice != nil }
@@ -40,8 +44,18 @@ private struct MemberPlayback: View {
     }
 
     private var nameAndStatus: some View {
-        HStack(spacing: 5) {
-            Label(member.name, systemImage: member.isSelf ? "person.crop.circle.fill" : (mix.muted ? "speaker.slash" : "person"))
+        HStack(spacing: summarySpacing) {
+            Image(systemName: "slider.horizontal.3")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: settingsIconWidth)
+                .opacity(canControlPlayback ? 1 : 0)
+                .help(Text("Playback settings"))
+                .accessibilityHidden(true)
+            Image(systemName: member.isSelf ? "person.crop.circle.fill" : (mix.muted ? "speaker.slash" : "person"))
+                .frame(width: iconWidth)
+                .accessibilityHidden(true)
+            Text(verbatim: member.name)
                 .lineLimit(1)
                 .truncationMode(.middle)
             if member.isSelf {
@@ -83,16 +97,18 @@ private struct MemberPlayback: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-            VStack(spacing: 0) {
-                #if os(iOS)
+            #if os(iOS)
+            memberRow(compactQuality: true)
+            #else
+            ViewThatFits(in: .horizontal) {
+                memberRow(compactQuality: false)
                 memberRow(compactQuality: true)
-                #else
-                ViewThatFits(in: .horizontal) {
-                    memberRow(compactQuality: false)
-                    memberRow(compactQuality: true)
-                }
-                #endif
             }
+            #endif
+        }
+        .onAppear { refreshMix() }
+        .popover(isPresented: $showingPlaybackSettings, attachmentAnchor: .point(.leading)) {
+            playbackSettings
         }
     }
 
@@ -100,17 +116,17 @@ private struct MemberPlayback: View {
     private func memberRow(compactQuality: Bool) -> some View {
         HStack(spacing: 8) {
             if canControlPlayback {
-                DisclosureGroup(isExpanded: $expanded) {
-                    playbackControls
-                        .padding(.vertical, 6)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                Button {
+                    refreshMix()
+                    showingPlaybackSettings = true
                 } label: {
                     nameAndStatus
+                        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Playback settings"))
                 .layoutPriority(1)
-                .onAppear { refreshMix() }
-                .onChange(of: expanded) { _, open in if open { refreshMix() } }
             } else {
                 nameAndStatus
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -125,6 +141,25 @@ private struct MemberPlayback: View {
     private func qualityButton(compact: Bool) -> some View {
         MemberConnectionQuality(member: member, voice: voice, compact: compact)
             .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var playbackSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Playback settings").font(.headline)
+                #if os(iOS)
+                Spacer()
+                Button("Done") { showingPlaybackSettings = false }
+                #endif
+            }
+            playbackControls
+        }
+        .frame(minWidth: 230, idealWidth: 260)
+        .padding(16)
+        #if os(iOS)
+        .presentationDetents([.medium, .large])
+        .presentationCompactAdaptation(.sheet)
+        #endif
     }
 
     private var playbackControls: some View {

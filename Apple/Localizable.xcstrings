@@ -3431,6 +3431,16 @@
         }
       }
     },
+    "Playback settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放设置"
+          }
+        }
+      }
+    },
     "Speaking": {
       "extractionState": "manual",
       "localizations": {
