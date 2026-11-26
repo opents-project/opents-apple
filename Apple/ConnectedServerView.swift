@@ -567,8 +567,10 @@ struct ConnectedServerView: View {
         ToolbarItemGroup(placement: .primaryAction) {
             #if os(macOS)
             HStack(spacing: 0) {
-                chatButton(closeChatReplacesDetail: closeChatReplacesDetail)
-                if tabs != nil { pushToTalkButton }
+                panelToggle("Text chat", systemImage: "text.bubble", isShowing: $showingChat, otherPanel: $showingPushToTalk)
+                if tabs != nil {
+                    panelToggle("Push to Talk Panel", systemImage: "waveform", isShowing: $showingPushToTalk, otherPanel: $showingChat)
+                }
             }
             .labelStyle(.iconOnly)
             #else
@@ -596,38 +598,32 @@ struct ConnectedServerView: View {
     }
 
     #if os(macOS)
-    private var pushToTalkButton: some View {
-        Button {
-            showingPushToTalk.toggle()
+    private func panelToggle(_ title: LocalizedStringKey, systemImage: String, isShowing: Binding<Bool>,
+                             otherPanel: Binding<Bool>) -> some View {
+        Toggle(isOn: Binding(get: { isShowing.wrappedValue }, set: { visible in
+            otherPanel.wrappedValue = false
+            isShowing.wrappedValue = visible
             compactColumn = .detail
-        } label: {
-            Label("Push to Talk Panel", systemImage: showingPushToTalk ? "waveform.circle.fill" : "waveform")
-                .frame(minWidth: Self.toolbarButtonSize, minHeight: Self.toolbarButtonSize)
+        })) {
+            Label(title, systemImage: systemImage)
+                .frame(width: Self.toolbarButtonSize, height: Self.toolbarButtonSize)
         }
-        .help("Push to Talk Panel")
-        .accessibilityAddTraits(showingPushToTalk ? .isSelected : [])
+        .toggleStyle(.button)
+        .help(Text(title))
+        .accessibilityAddTraits(isShowing.wrappedValue ? .isSelected : [])
     }
-    #endif
-
+    #else
     private func chatButton(closeChatReplacesDetail: Bool) -> some View {
-        #if os(macOS)
-        let chatVisible = showingChat && !showingPushToTalk
-        #else
         let chatVisible = showingChat
-        #endif
         let returningToChannel = chatVisible && closeChatReplacesDetail
         let title: LocalizedStringKey = returningToChannel ? "Back to channel" : (chatVisible ? "Close chat" : "Text chat")
         let icon = returningToChannel ? "chevron.left" : (chatVisible ? "text.bubble.fill" : "text.bubble")
         let toggleChat = {
             showingChat = !chatVisible
-            #if os(macOS)
-            showingPushToTalk = false
-            #endif
             compactColumn = !showingChat && selection == nil && usesPhoneColumnNavigation
                 ? .sidebar : .detail
         }
         return Button {
-            #if os(iOS)
             if usesPhoneColumnNavigation {
                 // Change columns without morphing the toolbar over the chat composer.
                 var transaction = Transaction(animation: nil)
@@ -635,17 +631,12 @@ struct ConnectedServerView: View {
                 withTransaction(transaction, toggleChat)
                 return
             }
-            #endif
             toggleChat()
         } label: {
-            #if os(macOS)
-            Label(title, systemImage: icon)
-                .frame(minWidth: Self.toolbarButtonSize, minHeight: Self.toolbarButtonSize)
-            #else
             Label(title, systemImage: icon).labelStyle(.iconOnly)
-            #endif
         }
     }
+    #endif
 
     @ViewBuilder private var channelDetail: some View {
         if let result = selectedMember {
