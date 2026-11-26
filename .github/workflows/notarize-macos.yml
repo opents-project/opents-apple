@@ -3,25 +3,40 @@ name: Notarize macOS
 on:
   push:
     branches: [main]
+    tags: ['v*']
     paths:
       - 'Apple/**'
       - 'core/**'
       - 'project.yml'
       - 'scripts/build-apple-core.sh'
+      - 'scripts/generate-macos-appcast.sh'
+      - 'scripts/verify-sparkle-signature.swift'
       - '.github/workflows/notarize-macos.yml'
   workflow_dispatch:
+    inputs:
+      release_candidate:
+        description: 'Optional vMAJOR.MINOR.PATCH to build and sign without publishing'
+        type: string
+
+env:
+  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_candidate || '' }}
 
 permissions:
   contents: read
 
+concurrency:
+  group: notarize-macos-${{ github.ref_type == 'tag' && 'release' || inputs.release_candidate && 'candidate' || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'push' && github.ref_type == 'tag')
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Prepare build tools
         run: |
           rustup toolchain install stable --profile minimal
@@ -29,10 +44,19 @@ jobs:
           command -v xcodegen || brew install xcodegen
       - name: Build macOS Release
         run: |
+          set -euo pipefail
+          version_arguments=()
+          if [[ -n "$RELEASE_TAG" ]]; then
+            if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo 'Release tags must have the form vMAJOR.MINOR.PATCH.' >&2
+              exit 1
+            fi
+            version_arguments=(MARKETING_VERSION="${RELEASE_TAG#v}" CURRENT_PROJECT_VERSION="$(git rev-list --count HEAD)")
+          fi
           ./scripts/build-apple-core.sh --macos-release
           xcodebuild -quiet -project OpenTS.xcodeproj -scheme OpenTS-macOS \
             -configuration Release -destination 'platform=macOS,arch=arm64' \
-            -derivedDataPath build/ReleaseBuild ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
+            -derivedDataPath build/ReleaseBuild ARCHS=arm64 CODE_SIGNING_ALLOWED=NO "${version_arguments[@]}" build
           ditto -c -k --keepParent build/ReleaseBuild/Build/Products/Release/OpenTS.app "$RUNNER_TEMP/unsigned.zip"
       - uses: actions/upload-artifact@v4
         with:
@@ -45,6 +69,10 @@ jobs:
     runs-on: macos-26
     environment: Build
     steps:
+      - uses: actions/checkout@v4
+        if: env.RELEASE_TAG != ''
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: unsigned-macos-arm64
@@ -57,11 +85,18 @@ jobs:
           APPLE_SIGNING_TEAM_ID: ${{ vars.APPLE_SIGNING_TEAM_ID }}
           NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
           NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+          SPARKLE_PUBLIC_KEY: ${{ vars.OPENTS_SPARKLE_PUBLIC_KEY }}
         run: |
           set -euo pipefail
           umask 077
           cd "$RUNNER_TEMP"
           ditto -x -k unsigned.zip "$RUNNER_TEMP"
+          archive=OpenTS-macOS-arm64.zip
+          if [[ -n "$RELEASE_TAG" ]]; then
+            : "${SPARKLE_PUBLIC_KEY:?Configure OPENTS_SPARKLE_PUBLIC_KEY in the Build environment}"
+            archive="OpenTS-${RELEASE_TAG}-macOS-arm64.zip"
+            plutil -replace SUPublicEDKey -string "$SPARKLE_PUBLIC_KEY" OpenTS.app/Contents/Info.plist
+          fi
           keychain="$RUNNER_TEMP/opents.keychain-db"
           password="$(openssl rand -hex 32)"
           trap 'rm -f signing.p12; security delete-keychain "$keychain" >/dev/null 2>&1 || true' EXIT
@@ -73,6 +108,12 @@ jobs:
           rm signing.p12
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain" login.keychain-db
+          sparkle="OpenTS.app/Contents/Frameworks/Sparkle.framework"
+          for component in XPCServices/Downloader.xpc XPCServices/Installer.xpc Updater.app Autoupdate; do
+            codesign --force --options runtime --timestamp --keychain "$keychain" \
+              --sign "$APPLE_SIGNING_IDENTITY" "$sparkle/Versions/B/$component"
+          done
+          codesign --force --options runtime --timestamp --keychain "$keychain" --sign "$APPLE_SIGNING_IDENTITY" "$sparkle"
           codesign --force --options runtime --timestamp --keychain "$keychain" --sign "$APPLE_SIGNING_IDENTITY" OpenTS.app
           codesign --verify --deep --strict OpenTS.app
           ditto -c -k --keepParent OpenTS.app submit.zip
@@ -83,10 +124,54 @@ jobs:
           xcrun stapler staple OpenTS.app
           xcrun stapler validate OpenTS.app
           spctl --assess --type execute --verbose=2 OpenTS.app
-          ditto -c -k --sequesterRsrc --keepParent OpenTS.app OpenTS-macOS-arm64.zip
-          shasum -a 256 OpenTS-macOS-arm64.zip
+          mkdir dist
+          ditto -c -k --sequesterRsrc --keepParent OpenTS.app "dist/$archive"
+          shasum -a 256 "dist/$archive"
+      - name: Generate signed Sparkle appcast
+        if: env.RELEASE_TAG != ''
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          bash scripts/generate-macos-appcast.sh "$RUNNER_TEMP/OpenTS.app" \
+            "$RUNNER_TEMP/dist/OpenTS-${RELEASE_TAG}-macOS-arm64.zip" \
+            "$RELEASE_TAG" "$RUNNER_TEMP/dist/appcast.xml"
       - uses: actions/upload-artifact@v4
         with:
           name: OpenTS-macOS-arm64-notarized
-          path: ${{ runner.temp }}/OpenTS-macOS-arm64.zip
+          path: ${{ runner.temp }}/dist/
           if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: notarize
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: OpenTS-macOS-arm64-notarized
+          path: dist
+      - name: Publish the release archive before updating the feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          archive="OpenTS-${tag}-macOS-arm64.zip"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            previous=$(mktemp -d)
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$archive" --dir "$previous"
+            cmp "dist/$archive" "$previous/$archive"
+          else
+            gh release create "$tag" "dist/$archive" --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --title "OpenTS ${tag#v}" --generate-notes
+          fi
+
+          if gh release view appcast --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload appcast dist/appcast.xml --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create appcast dist/appcast.xml --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title 'Update feed' --notes 'Sparkle appcast for OpenTS.' \
+              --prerelease --latest=false
+          fi

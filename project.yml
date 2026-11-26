@@ -11,6 +11,10 @@ settings:
     MARKETING_VERSION: 0.1.0
     CURRENT_PROJECT_VERSION: 1
     OTHER_LDFLAGS: "$(inherited) -framework Security -framework SystemConfiguration -framework CoreFoundation -lc++ -lz -liconv"
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.0
 targetTemplates:
   Client:
     type: application
@@ -28,9 +32,24 @@ targets:
   OpenTS-macOS:
     templates: [Client]
     platform: macOS
+    dependencies:
+      - package: Sparkle
+    info:
+      path: Config/macOS-Info.plist
+      properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: false
+        SUEnableSystemProfiling: false
+        SUFeedURL: https://github.com/opents-project/opents-apple/releases/download/appcast/appcast.xml
+        SUPublicEDKey: "$(OPENTS_SPARKLE_PUBLIC_KEY)"
+        SUScheduledCheckInterval: 86400
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.opents.macos
+        OPENTS_SPARKLE_PUBLIC_KEY: ""
     configFiles:
       Debug: Config/macOS-Debug.xcconfig
   OpenTS-iOS:

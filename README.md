@@ -18,4 +18,14 @@ Select the macOS or iOS scheme. The packaging script produces debug libraries fo
 
 To keep local macOS Debug builds on one signing identity, set `CODE_SIGN_STYLE = Manual`, `CODE_SIGN_IDENTITY` (the certificate fingerprint from `security find-identity -v -p codesigning`), and `DEVELOPMENT_TEAM` in `Config/macOS-Debug.local.xcconfig`. Git ignores this machine-specific file. The first switch from ad-hoc signing can require Keychain approval for the existing TS3 identity.
 
+## macOS updates
+
+Release builds check for updates daily with Sparkle 2.10.0. Users can also choose **Check for Updates…** from the OpenTS app menu or menu bar icon. Installation is opt-in by default. Users on a build that predates Sparkle need to install the first update-enabled release manually.
+
+For initial setup, use `generate_keys --account OpenTS` from the [official Sparkle tools](https://github.com/sparkle-project/Sparkle/releases/tag/2.10.0). In the `Build` GitHub Actions environment, allow release tags (tag rule `v*`) alongside the `main` branch. Set `OPENTS_SPARKLE_PUBLIC_KEY` to the public key printed by `generate_keys --account OpenTS -p`. Set `SPARKLE_PRIVATE_KEY` as a repository Actions secret using the private key exported by `generate_keys --account OpenTS -x <private-file>`. Keep a secure backup of the OpenTS key and use the same key for subsequent releases.
+
+Pushing a stable `vMAJOR.MINOR.PATCH` tag builds, signs and notarizes the Apple Silicon archive. The tag supplies the display version and the commit count supplies the increasing build number. CI publishes the versioned archive first, then updates the appcast on the `appcast` release. Ordinary `main` builds produce CI artifacts for testing, with the updater inactive.
+
+To validate a release ahead of publication, manually run **Notarize macOS** on `main` with `release_candidate` set to the intended version tag. This produces the notarized archive and signed appcast as Actions artifacts.
+
 [验收清单](ACCEPTANCE.zh-CN.md) · [中文实施计划](PLAN.zh-CN.md) · [Apache License 2.0](LICENSE)
