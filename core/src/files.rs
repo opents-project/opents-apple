@@ -166,6 +166,7 @@ struct Active {
     rows: BTreeMap<String, RemoteChannelFile>,
     deadline: Instant,
     copy: Option<JoinHandle<io::Result<()>>>,
+    upload_confirmed: watch::Sender<bool>,
 }
 impl Drop for Worker {
     fn drop(&mut self) {
@@ -258,6 +259,7 @@ impl Worker {
                     rows: Default::default(),
                     deadline: Instant::now() + Duration::from_secs(20),
                     copy: None,
+                    upload_confirmed: watch::channel(false).0,
                 })
             }
             Err(e) => {
@@ -360,8 +362,10 @@ impl Worker {
                 }
             }
             StreamItem::FiletransferFailed(id, error) if id.0 == a.id => {
-                if !matches!(&error, tsclientlib::Error::CommandError(e) if e.error==tsclientlib::TsError::FileTransferComplete)
+                if matches!(&error, tsclientlib::Error::CommandError(e) if e.error==tsclientlib::TsError::FileTransferComplete)
                 {
+                    a.upload_confirmed.send_replace(true);
+                } else {
                     self.finish(Err(error.to_string()));
                 }
             }
@@ -375,18 +379,19 @@ impl Worker {
                         Ok(f) => {
                             let size = *size;
                             let progress = a.request.progress.clone();
+                            let confirmed = a.upload_confirmed.subscribe();
                             a.copy = Some(tokio::spawn(async move {
                                 let mut socket = result.stream;
                                 stream_exact(File::from_std(f), &mut socket, size, &progress)
                                     .await?;
-                                // Wait for the server to close the transfer before refreshing the listing.
-                                let mut response = [0; 1];
-                                match timeout(Duration::from_secs(30), socket.read(&mut response))
-                                    .await??
-                                {
-                                    0 => Ok(()),
-                                    _ => Err(io::Error::other("Unexpected upload response")),
-                                }
+                                confirm_upload(confirmed, async {
+                                    let mut response = [0; 1];
+                                    match socket.read(&mut response).await? {
+                                        0 => Ok(()),
+                                        _ => Err(io::Error::other("Unexpected upload response")),
+                                    }
+                                })
+                                .await
                             }));
                         }
                         Err(e) => self.finish(Err(e.to_string())),
@@ -398,8 +403,9 @@ impl Worker {
                     let path = path.clone();
                     let progress = a.request.progress.clone();
                     a.copy = Some(tokio::spawn(async move {
-                        let file = File::create_new(path).await?;
-                        stream_exact(result.stream, file, result.size, &progress).await
+                        let mut file = File::create_new(path).await?;
+                        stream_exact(result.stream, &mut file, result.size, &progress).await?;
+                        timeout(Duration::from_secs(30), file.shutdown()).await?
                     }));
                 }
             }
@@ -408,6 +414,35 @@ impl Worker {
         None
     }
 }
+// TeamSpeak sends the completion on the control connection independently of
+// the file socket. An orderly EOF also works with servers that omit the status.
+async fn confirm_upload(
+    mut confirmed: watch::Receiver<bool>,
+    close_socket: impl std::future::Future<Output = io::Result<()>>,
+) -> io::Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let acknowledgement = async {
+        confirmed
+            .wait_for(|value| *value)
+            .await
+            .map(|_| ())
+            .map_err(|_| io::Error::other("Connection interrupted"))
+    };
+    tokio::pin!(acknowledgement);
+    tokio::select! {
+        result = &mut acknowledgement => result,
+        result = close_socket => match result {
+            Err(error) if matches!(error.kind(), io::ErrorKind::ConnectionReset | io::ErrorKind::BrokenPipe | io::ErrorKind::NotConnected) => {
+                // A reset after all writes does not tell us whether the server
+                // committed the file. Only its matching status can resolve it.
+                tokio::time::timeout_at(deadline, acknowledgement).await.unwrap_or(Err(error))
+            }
+            other => other,
+        },
+        _ = tokio::time::sleep_until(deadline) => Err(io::ErrorKind::TimedOut.into()),
+    }
+}
+
 async fn stream_exact(
     mut reader: impl AsyncRead + Unpin,
     mut writer: impl AsyncWrite + Unpin,
@@ -427,7 +462,7 @@ async fn stream_exact(
         remaining -= count as u64;
         progress.bytes.fetch_add(count as u64, Ordering::Relaxed);
     }
-    timeout(idle, writer.shutdown()).await?
+    Ok(())
 }
 
 #[cfg(test)]
@@ -485,6 +520,7 @@ mod tests {
                 rows: Default::default(),
                 deadline: Instant::now() + Duration::from_secs(5),
                 copy: None,
+                upload_confirmed: watch::channel(false).0,
             }),
             next_id: 42,
             abandoned: Default::default(),
@@ -530,6 +566,61 @@ mod tests {
         assert!(worker.abandoned.is_empty());
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn reset_after_upload_needs_matching_server_confirmation() {
+        let source = || std::fs::File::open("Cargo.toml").unwrap();
+        let (mut worker, _cancel, mut done) = active(Operation::Upload(source(), 32));
+        let confirmation = worker.active.as_ref().unwrap().upload_confirmed.subscribe();
+        worker.active.as_mut().unwrap().copy =
+            Some(tokio::spawn(confirm_upload(confirmation, async {
+                Err(io::ErrorKind::ConnectionReset.into())
+            })));
+        tokio::task::yield_now().await;
+        let status = |id| {
+            StreamItem::FiletransferFailed(
+                tsclientlib::FiletransferHandle(id),
+                tsclientlib::CommandError {
+                    error: tsclientlib::TsError::FileTransferComplete,
+                    missing_permission: None,
+                }
+                .into(),
+            )
+        };
+        worker.observe(status(41));
+        assert!(done.try_recv().is_err());
+        worker.observe(status(42));
+        worker.poll().await;
+        assert!(done.await.unwrap().is_ok());
+
+        let (_tx, rx) = watch::channel(false);
+        let failure = confirm_upload(rx, async { Err(io::ErrorKind::ConnectionReset.into()) })
+            .await
+            .unwrap_err();
+        assert_eq!(failure.kind(), io::ErrorKind::ConnectionReset);
+    }
+
+    #[tokio::test]
+    async fn early_server_completion_cannot_override_short_source() {
+        let (mut worker, _cancel, done) = active(Operation::Upload(
+            std::fs::File::open("Cargo.toml").unwrap(),
+            32,
+        ));
+        worker.observe(StreamItem::FiletransferFailed(
+            tsclientlib::FiletransferHandle(42),
+            tsclientlib::CommandError {
+                error: tsclientlib::TsError::FileTransferComplete,
+                missing_permission: None,
+            }
+            .into(),
+        ));
+        assert!(*worker.active.as_ref().unwrap().upload_confirmed.borrow());
+        worker.active.as_mut().unwrap().copy = Some(tokio::spawn(async {
+            stream_exact(&b"short"[..], tokio::io::sink(), 32, &Progress::default()).await
+        }));
+        worker.poll().await;
+        assert!(done.await.unwrap().is_err());
+    }
+
     #[tokio::test]
     async fn negotiated_streams_round_trip_over_tcp() {
         use tokio::net::{TcpListener, TcpStream};
@@ -544,9 +635,11 @@ mod tests {
         let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
-            let mut remote = vec![];
+            // The size came from ftinitupload. The protocol does not require
+            // the client to close its writing half to delimit the payload.
+            let mut remote = vec![0; 200_000];
             let (mut socket, _) = listener.accept().await.unwrap();
-            socket.read_to_end(&mut remote).await.unwrap();
+            socket.read_exact(&mut remote).await.unwrap();
             drop(socket);
             let (mut socket, _) = listener.accept().await.unwrap();
             socket.write_all(&remote).await.unwrap();
