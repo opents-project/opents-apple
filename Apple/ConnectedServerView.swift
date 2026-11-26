@@ -14,6 +14,7 @@ struct ConnectedServerView: View {
     @State private var showingChat = false
     @State private var chatSelection: ChatScope?
     @State private var editorTarget: ChannelEditorTarget?
+    @State private var fileTarget: ChannelFileTarget?
     @State private var showingGroupPermissions = false
     @State private var showingIdentity = false
     @State private var lockedRoom: Room?
@@ -47,6 +48,12 @@ struct ConnectedServerView: View {
         let nonce = UUID()
     }
 
+    private struct ChannelFileTarget: Identifiable {
+        let room: Room
+        let session: Session
+        var id: UInt64 { room.id }
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let narrow = geometry.size.width < 600
@@ -56,9 +63,14 @@ struct ConnectedServerView: View {
                     sidebar
                         .navigationTitle(model.server)
                         .navigationSplitViewColumnWidth(min: 170, ideal: 245, max: 440)
-                        #if os(iOS)
-                        .toolbar { if widthClass == .compact || UIDevice.current.userInterfaceIdiom == .phone { actions(closeChatReplacesDetail: !alongside) } }
-                        #endif
+                        .toolbar {
+                            ToolbarItem(placement: .navigation) { channelTreeMenu }
+                            #if os(iOS)
+                            if widthClass == .compact || Self.startsInChannelList {
+                                actions(closeChatReplacesDetail: !alongside)
+                            }
+                            #endif
+                        }
                 } detail: {
                     HStack(spacing: 0) {
                         if !showingChat || alongside {
@@ -104,13 +116,19 @@ struct ConnectedServerView: View {
         .sheet(item: $editorTarget) { target in
             ChannelManagementView(model: model, target: target)
         }
+        .sheet(item: $fileTarget) { target in
+            ChannelFilesView(session: target.session, room: target.room)
+        }
         .sheet(isPresented: $showingGroupPermissions) {
             if let session = model.groupPermissionSession {
                 LiveGroupPermissionsView(session: session, generation: model.groupPermissionGeneration)
             }
         }
         .onChange(of: model.reconnecting) { _, reconnecting in
-            if reconnecting { showingGroupPermissions = false }
+            if reconnecting {
+                showingGroupPermissions = false
+                fileTarget = nil
+            }
         }
         .sheet(isPresented: $showingIdentity) {
             VStack(alignment: .leading, spacing: 12) {
@@ -149,15 +167,8 @@ struct ConnectedServerView: View {
             }
             #if os(macOS)
             .environment(\.sidebarRowSize, channelTreeDensity == .compact ? .small : .medium)
-            .contextMenu(forSelectionType: UInt64.self) { ids in
-                if let id = ids.first, let room = model.room(id) {
-                    Button("Join Channel") { requestJoin(room) }
-                        .disabled(model.currentChannel == id || model.joining || model.reconnecting)
-                }
-            } primaryAction: { ids in
-                if let id = ids.first, let room = model.room(id) { requestJoin(room) }
-            }
             #endif
+            .contextMenu(forSelectionType: UInt64.self, menu: channelContextMenu, primaryAction: sidebarPrimaryAction)
             .task(id: scrollRequest) {
                 guard let request = scrollRequest else { return }
                 await Task.yield()
@@ -167,6 +178,76 @@ struct ConnectedServerView: View {
                       path.dropLast().allSatisfy(expanded.contains) else { return }
                 proxy.scrollTo(request.channel, anchor: .center)
             }
+        }
+    }
+
+    private var sidebarPrimaryAction: ((Set<UInt64>) -> Void)? {
+        #if os(macOS)
+        { ids in
+            if let room = ids.first.flatMap(model.room) { requestJoin(room) }
+        }
+        #else
+        nil
+        #endif
+    }
+
+    @ViewBuilder private func channelContextMenu(_ ids: Set<UInt64>) -> some View {
+        if ids.isEmpty {
+            channelTreeActions
+        } else if ids.count == 1, let room = ids.first.flatMap(model.room) {
+            channelRowActions(room)
+        }
+    }
+
+    private var channelTreeMenu: some View {
+        Menu {
+            channelTreeActions
+        } label: {
+            Label("Channel list actions", systemImage: "list.bullet")
+        }
+        .labelStyle(.iconOnly)
+        .help("Channel list actions")
+    }
+
+    private var channelTreeActions: some View {
+        let generation = model.generation
+        return Group {
+            Button("Create channel", systemImage: "plus") {
+                guard !model.reconnecting, model.generation == generation else { return }
+                editorTarget = ChannelEditorTarget(parent: 0, room: nil, generation: generation)
+            }
+            .disabled(model.reconnecting)
+            channelExpansionActions
+        }
+    }
+
+    private func channelRowActions(_ room: Room) -> some View {
+        let generation = model.generation
+        func liveRoom() -> Room? {
+            guard !model.reconnecting, model.generation == generation else { return nil }
+            return model.room(room.id)
+        }
+        return Group {
+            if room.id != model.currentChannel {
+                Button("Join Channel", systemImage: "arrow.right.circle") {
+                    if let room = liveRoom() { requestJoin(room) }
+                }
+                .disabled(model.joining || model.reconnecting)
+            }
+            Button("Edit channel", systemImage: "pencil") {
+                guard let room = liveRoom() else { return }
+                editorTarget = ChannelEditorTarget(parent: room.parent, room: room, generation: generation)
+            }
+            .disabled(model.reconnecting)
+            Button("Create subchannel", systemImage: "plus.rectangle.on.folder") {
+                guard let room = liveRoom() else { return }
+                editorTarget = ChannelEditorTarget(parent: room.id, room: nil, generation: generation)
+            }
+            .disabled(model.reconnecting)
+            Button("Open channel files", systemImage: "folder") {
+                if let room = liveRoom() { openChannelFiles(room) }
+            }
+            .disabled(model.reconnecting || model.fileSession == nil)
         }
     }
 
@@ -194,20 +275,6 @@ struct ConnectedServerView: View {
             #endif
             Menu {
                 Button("Show current channel", systemImage: "person.wave.2", action: revealCurrent)
-                channelExpansionActions
-                Section {
-                    Button("Create channel", systemImage: "plus") {
-                        editorTarget = ChannelEditorTarget(parent: 0, room: nil, generation: model.generation)
-                    }
-                    if let room = selectedRoom {
-                        Button("Create subchannel", systemImage: "plus.rectangle.on.folder") {
-                            editorTarget = ChannelEditorTarget(parent: room.id, room: nil, generation: model.generation)
-                        }
-                        Button("Edit channel", systemImage: "pencil") {
-                            editorTarget = ChannelEditorTarget(parent: room.parent, room: room, generation: model.generation)
-                        }
-                    }
-                }.disabled(model.reconnecting)
                 Button("Group permissions", systemImage: "person.2.badge.gearshape") { showingGroupPermissions = true }
                     .disabled(model.groupPermissionSession == nil)
                 Button("My Identity", systemImage: "person.text.rectangle") { showingIdentity = true }
@@ -260,7 +327,8 @@ struct ConnectedServerView: View {
                     } header: { Text("Visible members (\(room.members.count))") }
                 }
                 ChannelDescription(model: model, room: room).id(room.id)
-                ChannelFilesButton(model: model, room: room).id(room.id)
+                Button("Channel files", systemImage: "folder") { openChannelFiles(room) }
+                    .disabled(model.reconnecting || model.fileSession == nil)
                 DisclosureGroup("Channel info") {
                     LabeledContent("Audio codec", value: room.codec.replacingOccurrences(of: "Opus", with: "Opus "))
                     if !room.audioSupported { Label("Audio unavailable for this codec", systemImage: "speaker.slash") }
@@ -365,6 +433,11 @@ struct ConnectedServerView: View {
         guard model.currentChannel != room.id, !model.joining, !model.reconnecting else { return }
         if room.passwordRequired { password = ""; lockedRoom = room }
         else { model.join(room) }
+    }
+
+    private func openChannelFiles(_ room: Room) {
+        guard !model.reconnecting, let session = model.fileSession else { return }
+        fileTarget = ChannelFileTarget(room: room, session: session)
     }
 }
 

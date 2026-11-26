@@ -1,30 +1,11 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct ChannelFilesButton: View {
-    @ObservedObject var model: ServerModel
-    let room: Room
-    @State private var showing = false
-
-    var body: some View {
-        Button("Channel files", systemImage: "folder") { showing = true }
-            .disabled(model.reconnecting || model.fileSession == nil)
-            .sheet(isPresented: $showing) {
-                if let session = model.fileSession {
-                    ChannelFilesView(session: session, room: room)
-                }
-            }
-            .onChange(of: model.reconnecting) { _, reconnecting in
-                if reconnecting { showing = false }
-            }
-    }
-}
-
 private extension RemoteChannelFile {
     var wireName: Data { Data(name.utf8) }
 }
 
-private struct ChannelFilesView: View {
+struct ChannelFilesView: View {
     let session: Session
     let room: Room
     @Environment(\.dismiss) private var dismiss

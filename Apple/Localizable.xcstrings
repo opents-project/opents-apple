@@ -1,6 +1,26 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Channel list actions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道列表操作"
+          }
+        }
+      }
+    },
+    "Open channel files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开频道文件"
+          }
+        }
+      }
+    },
     "Expand All Channels": {
       "localizations": {
         "zh-Hans": {
