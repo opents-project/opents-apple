@@ -314,7 +314,11 @@ struct ConnectedServerView: View {
                 Section {
                     channelRows
                 } header: {
-                    if model.reconnecting { Label("Reconnecting…", systemImage: "arrow.clockwise") }
+                    if model.reconnecting {
+                        Label("Reconnecting…", systemImage: "arrow.clockwise")
+                    } else if mobileTabs != nil && usesMobileConnectionsSidebar {
+                        Text("Channels")
+                    }
                 }
                 #endif
             }
