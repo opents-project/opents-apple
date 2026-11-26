@@ -264,25 +264,18 @@ private struct ServerConnectionRow: View {
     let selected: Bool
     let showsChannelTree: Bool
     let open: () -> Void
-    @Environment(\.sidebarRowSize) private var sidebarRowSize
     private var leadingExpansion: CGFloat { showsChannelTree ? 16 : 6 }
 
     var body: some View {
-        if #available(macOS 26.0, *), sidebarRowSize == .small {
-            row.listRowInsets(.vertical, 2)
-        } else {
-            row.padding(.vertical, sidebarRowSize == .small ? -2 : 0)
-        }
-    }
-
-    private var row: some View {
         HStack(spacing: 5) {
             Button(action: open) {
                 HStack(spacing: 8) {
                     connectionIcon.frame(width: 16)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(verbatim: title).fontWeight(selected ? .semibold : .regular)
+                        Text(verbatim: title)
+                            .font(.body)
+                            .fontWeight(selected ? .semibold : .regular)
                         if let subtitle {
                             Text(verbatim: subtitle)
                                 .font(.caption)
@@ -309,12 +302,15 @@ private struct ServerConnectionRow: View {
                 ConnectionAudioActions(audio: audio)
             }
         }
-        .frame(minHeight: sidebarRowSize == .small ? 28 : 36)
+        .frame(height: 36)
         // Match the channel highlight across the disclosure inset and trailing spacing.
         .padding(.leading, leadingExpansion)
         .padding(.trailing, 6)
-        .background(selected ? Color.accentColor.opacity(0.14) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 6))
+        .background {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(selected ? Color.accentColor.opacity(0.14) : Color.clear)
+                .padding(.vertical, 2)
+        }
         .padding(.leading, -leadingExpansion)
         .padding(.trailing, -6)
     }
@@ -326,6 +322,9 @@ private struct ServerConnectionRow: View {
                 .frame(height: 14)
         } else {
             Image(systemName: model.error == nil ? "server.rack" : "exclamationmark.circle")
+                // Connection rows keep standard sizing even when the channel list is compact.
+                .font(.system(size: 13))
+                .imageScale(.medium)
                 .foregroundStyle(model.active ? Color.accentColor : Color.secondary)
         }
     }

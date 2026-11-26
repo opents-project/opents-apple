@@ -157,6 +157,7 @@ struct MobileServerConnectionsSection: View {
         let label = tabs.label(for: tab)
         let selected = tabs.selected.id == tab.id
         let model = tab.model
+        let subtitle = label.subtitle ?? model.currentRoom?.name
         return HStack(spacing: 2) {
             Button {
                 tabs.select(tab)
@@ -173,7 +174,7 @@ struct MobileServerConnectionsSection: View {
                     .frame(width: 20)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: label.title).fontWeight(selected ? .semibold : .regular)
-                        if let subtitle = label.subtitle {
+                        if let subtitle {
                             Text(verbatim: subtitle).font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -191,14 +192,14 @@ struct MobileServerConnectionsSection: View {
             .accessibilityValue(Text(model.reconnecting ? "Reconnecting…" : model.active ? "Connected" : "Disconnected"))
             if showsAudioControls {
                 MobileConnectionAudioActions(audio: model.audio,
-                                             connectionName: label.subtitle.map { "\(label.title) · \($0)" } ?? label.title,
+                                             connectionName: subtitle.map { "\(label.title) · \($0)" } ?? label.title,
                                              reconnecting: model.reconnecting)
             }
         }
         .frame(minHeight: showsAudioControls ? 48 : 44)
         .padding(.horizontal, 8)
-        .background(selected ? Color.accentColor.opacity(0.14) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 8))
+        .listRowBackground(Capsule().fill(selected ? Color.accentColor.opacity(0.14) : Color.clear)
+            .padding(.vertical, 8))
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .selectionDisabled()
         .contextMenu {
