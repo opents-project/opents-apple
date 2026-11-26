@@ -2,6 +2,7 @@ import SwiftUI
 
 struct VoiceMenu: View {
     @ObservedObject var audio: VoiceAudio
+    var includesMuteControls = true
     #if os(macOS)
     @ViewBuilder
     private func deviceMenu(_ side: DeviceSide) -> some View {
@@ -45,11 +46,13 @@ struct VoiceMenu: View {
         deviceMenu(.output)
         Toggle("Global push to talk (⌥⇧Space)", isOn: $audio.globalShortcut)
             .disabled(audio.voiceActivated)
-        #endif
-        Button(audio.microphone ? "Mute Microphone" : "Enable Microphone", systemImage: audio.microphone ? "mic" : "mic.slash") {
-            Task { await audio.setMicrophone(!audio.microphone) }
+        if includesMuteControls {
+            Button(audio.microphone ? "Mute Microphone" : "Enable Microphone", systemImage: audio.microphone ? "mic" : "mic.slash") {
+                Task { await audio.setMicrophone(!audio.microphone) }
+            }
+            Button(audio.output ? "Mute Output" : "Enable Output", systemImage: audio.output ? "speaker.wave.2" : "speaker.slash", action: audio.toggleOutput)
         }
-        Button(audio.output ? "Mute Output" : "Enable Output", systemImage: audio.output ? "speaker.wave.2" : "speaker.slash", action: audio.toggleOutput)
+        #endif
     }
 }
 
@@ -189,7 +192,7 @@ struct VoiceControls: View {
 
     private var settings: some View {
         Menu {
-            VoiceMenu(audio: audio)
+            VoiceMenu(audio: audio, includesMuteControls: false)
             if audio.voiceActivated { Button("Activation threshold") { showingThreshold = true } }
             Divider()
             Button("Voice diagnostics") { showingDiagnostics = true }
