@@ -1456,23 +1456,6 @@
         }
       }
     },
-    "Down loss %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Down loss %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下行丢包 %@"
-          }
-        }
-      }
-    },
     "Edit Bookmark": {
       "extractionState": "manual",
       "localizations": {

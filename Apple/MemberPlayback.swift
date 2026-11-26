@@ -186,7 +186,7 @@ struct MemberConnectionQuality: View {
 
     private func lossSummary(_ quality: ConnectionQuality?) -> String {
         if let incoming = percent(quality?.incomingLoss) {
-            return String(format: NSLocalizedString("Down loss %@", comment: "Incoming loss summary"), incoming)
+            return String(format: NSLocalizedString("Loss %@", comment: "Compact packet loss summary"), incoming)
         }
         if let outgoing = percent(quality?.outgoingLoss) {
             return String(format: NSLocalizedString("Up loss %@", comment: "Outgoing loss summary"), outgoing)
