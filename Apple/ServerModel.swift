@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 struct ChannelNode: Identifiable {
     let room: Room
@@ -39,7 +42,7 @@ struct ChannelNode: Identifiable {
 @MainActor
 final class ServerModel: ObservableObject {
     @Published var address = UserDefaults.standard.string(forKey: "lastServer") ?? ""
-    @Published var nickname = UserDefaults.standard.string(forKey: "lastNickname") ?? "OpenTS"
+    @Published var nickname = UserDefaults.standard.string(forKey: "lastNickname") ?? ServerModel.defaultNickname
     @Published var selectedIdentityUID = UserDefaults.standard.string(forKey: "connectionIdentityUID") {
         didSet { UserDefaults.standard.set(selectedIdentityUID, forKey: "connectionIdentityUID") }
     }
@@ -70,6 +73,17 @@ final class ServerModel: ObservableObject {
 
     var groupPermissionSession: Session? { reconnecting || server.isEmpty ? nil : session }
     var groupPermissionGeneration: UInt64 { generation }
+
+    private static var defaultNickname: String {
+        #if os(macOS)
+        let name = NSUserName()
+        #elseif os(iOS)
+        let name = UIDevice.current.name
+        #else
+        let name = ""
+        #endif
+        return name.isEmpty ? "OpenTS" : name
+    }
 
     init(channelTreeDefaults: UserDefaults = .standard) {
         self.channelTreeDefaults = channelTreeDefaults
