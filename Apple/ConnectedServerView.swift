@@ -25,8 +25,6 @@ struct ConnectedServerView: View {
     @State private var chatSelection: ChatScope?
     @State private var editorTarget: ChannelEditorTarget?
     @State private var fileTarget: ChannelFileTarget?
-    @State private var showingGroupPermissions = false
-    @State private var permissionGroup: ListedGroup?
     @State private var playbackTarget: MemberSelection?
     @State private var showingIdentity = false
     @State private var lockedRoom: Room?
@@ -243,12 +241,6 @@ struct ConnectedServerView: View {
         .sheet(item: $fileTarget) { target in
             ChannelFilesView(session: target.session, room: target.room)
         }
-        .sheet(isPresented: $showingGroupPermissions) {
-            if let session = model.groupPermissionSession {
-                LiveGroupPermissionsView(session: session, generation: model.groupPermissionGeneration,
-                                         initialGroup: permissionGroup)
-            }
-        }
         #if os(macOS)
         .sheet(item: $memberGroupAssignment) { target in
             MemberGroupAssignmentView(model: model, target: target)
@@ -289,7 +281,6 @@ struct ConnectedServerView: View {
         }
         .onChange(of: model.reconnecting) { _, reconnecting in
             if reconnecting {
-                showingGroupPermissions = false
                 #if os(macOS)
                 memberGroupAssignment = nil
                 ownChannelGroupChange = nil
@@ -580,11 +571,6 @@ struct ConnectedServerView: View {
             #endif
             Menu {
                 Button("Show current channel", systemImage: "person.wave.2", action: revealCurrent)
-                Button("Group permissions", systemImage: "person.2.badge.gearshape") {
-                    permissionGroup = nil
-                    showingGroupPermissions = true
-                }
-                    .disabled(model.groupPermissionSession == nil)
                 Button("My Identity", systemImage: "person.text.rectangle") { showingIdentity = true }
                 Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right") {
                     #if os(macOS)

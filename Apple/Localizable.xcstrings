@@ -442,6 +442,16 @@
         }
       }
     },
+    "Tools": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具"
+          }
+        }
+      }
+    },
     "No assignable groups.": {
       "localizations": {
         "zh-Hans": {
@@ -478,6 +488,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "权限不足"
+          }
+        }
+      }
+    },
+    "Permissions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "权限"
+          }
+        }
+      }
+    },
+    "Permissions · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "权限 · %@"
           }
         }
       }
@@ -4476,6 +4506,920 @@
           "stringUnit": {
             "state": "translated",
             "value": "继承自"
+          }
+        }
+      }
+    },
+    "Add group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建群组"
+          }
+        }
+      }
+    },
+    "Apply": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用"
+          }
+        }
+      }
+    },
+    "Copy group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制群组"
+          }
+        }
+      }
+    },
+    "Default group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认群组"
+          }
+        }
+      }
+    },
+    "Delete group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除群组"
+          }
+        }
+      }
+    },
+    "Delete group?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除这个群组？"
+          }
+        }
+      }
+    },
+    "Discard": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放弃"
+          }
+        }
+      }
+    },
+    "Discard unsaved permission changes?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放弃未保存的权限更改？"
+          }
+        }
+      }
+    },
+    "Group name": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "群组名称"
+          }
+        }
+      }
+    },
+    "Rename group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名群组"
+          }
+        }
+      }
+    },
+    "Select a group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一个群组"
+          }
+        }
+      }
+    },
+    "Add online member": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加在线成员"
+          }
+        }
+      }
+    },
+    "Members": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "成员"
+          }
+        }
+      }
+    },
+    "No matching members.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的成员。"
+          }
+        }
+      }
+    },
+    "No members.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有成员。"
+          }
+        }
+      }
+    },
+    "Remove member": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除成员"
+          }
+        }
+      }
+    },
+    "Search members": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索成员"
+          }
+        }
+      }
+    },
+    "The server assigns this group automatically.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未加入其他服务器组的成员会自动归入此组。"
+          }
+        }
+      }
+    },
+    "Permission view": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "权限视图"
+          }
+        }
+      }
+    },
+    "Common": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "常用"
+          }
+        }
+      }
+    },
+    "Advanced": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高级"
+          }
+        }
+      }
+    },
+    "Unset": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未设置"
+          }
+        }
+      }
+    },
+    "Allow": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许"
+          }
+        }
+      }
+    },
+    "Deny": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "禁止"
+          }
+        }
+      }
+    },
+    "Hidden": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不显示"
+          }
+        }
+      }
+    },
+    "Before name": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在昵称前显示"
+          }
+        }
+      }
+    },
+    "After name": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在昵称后显示"
+          }
+        }
+      }
+    },
+    "Basics": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "基础"
+          }
+        }
+      }
+    },
+    "Member moderation": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "成员管理"
+          }
+        }
+      }
+    },
+    "Channel management": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道管理"
+          }
+        }
+      }
+    },
+    "File transfer": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件传输"
+          }
+        }
+      }
+    },
+    "%lld configured": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已设置 %lld 项"
+          }
+        }
+      }
+    },
+    "Required power to kick, ban, or move: %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "踢出、封禁、移动所需等级：%lld"
+          }
+        }
+      }
+    },
+    "Groups and members": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "群组与成员"
+          }
+        }
+      }
+    },
+    "Clients": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "客户端"
+          }
+        }
+      }
+    },
+    "Communication": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "交流"
+          }
+        }
+      }
+    },
+    "Search names, descriptions, or IDs": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索名称、说明或编号"
+          }
+        }
+      }
+    },
+    "No permissions assigned": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未设置权限"
+          }
+        }
+      }
+    },
+    "No matching permissions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的权限"
+          }
+        }
+      }
+    },
+    "No common permissions available": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有可展示的常用权限"
+          }
+        }
+      }
+    },
+    "The server did not provide definitions for the curated common permissions.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器未提供这些常用权限的定义。可在高级视图查看已有权限。"
+          }
+        }
+      }
+    },
+    "Remove this permission?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除这项权限？"
+          }
+        }
+      }
+    },
+    "Remove Permission": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除权限"
+          }
+        }
+      }
+    },
+    "Add Permission": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加权限"
+          }
+        }
+      }
+    },
+    "Remove…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除…"
+          }
+        }
+      }
+    },
+    "Files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件"
+          }
+        }
+      }
+    },
+    "Set value": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设定数值"
+          }
+        }
+      }
+    },
+    "Clear setting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清除设置"
+          }
+        }
+      }
+    },
+    "Edit value": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑数值"
+          }
+        }
+      }
+    },
+    "Modify server name": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改服务器名称"
+          }
+        }
+      }
+    },
+    "Modify welcome message": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改服务器欢迎消息"
+          }
+        }
+      }
+    },
+    "Create server groups": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建服务器组"
+          }
+        }
+      }
+    },
+    "Delete server groups": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除服务器组"
+          }
+        }
+      }
+    },
+    "Group member add power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加群组成员的权限等级"
+          }
+        }
+      }
+    },
+    "Required power to add group members": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加此组成员所需等级"
+          }
+        }
+      }
+    },
+    "Group member remove power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除群组成员的权限等级"
+          }
+        }
+      }
+    },
+    "Required power to remove group members": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除此组成员所需等级"
+          }
+        }
+      }
+    },
+    "Show group name in channel tree": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在频道树显示群组名称"
+          }
+        }
+      }
+    },
+    "Kick from server power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将成员踢出服务器的权限等级"
+          }
+        }
+      }
+    },
+    "Required power to kick from server": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将此组成员踢出服务器所需等级"
+          }
+        }
+      }
+    },
+    "Client ban power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "封禁成员的权限等级"
+          }
+        }
+      }
+    },
+    "Required power to ban clients": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "封禁此组成员所需等级"
+          }
+        }
+      }
+    },
+    "Client move power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动成员的权限等级"
+          }
+        }
+      }
+    },
+    "Required power to move clients": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动此组成员所需等级"
+          }
+        }
+      }
+    },
+    "Use a reserved slot": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用保留席位"
+          }
+        }
+      }
+    },
+    "Channel join power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入频道的权限等级"
+          }
+        }
+      }
+    },
+    "Required power to join channels": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入频道所需等级"
+          }
+        }
+      }
+    },
+    "Channel modify power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改频道的权限等级"
+          }
+        }
+      }
+    },
+    "Required power to modify channels": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改频道所需等级"
+          }
+        }
+      }
+    },
+    "Create sub-channels": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建子频道"
+          }
+        }
+      }
+    },
+    "Modify channel topic": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改频道主题"
+          }
+        }
+      }
+    },
+    "Client talk power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发言权限等级"
+          }
+        }
+      }
+    },
+    "Required power to speak": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发言所需等级"
+          }
+        }
+      }
+    },
+    "Client whisper power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "耳语权限等级"
+          }
+        }
+      }
+    },
+    "Private message power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送私聊的权限等级"
+          }
+        }
+      }
+    },
+    "Required power to send private messages": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送私聊所需等级"
+          }
+        }
+      }
+    },
+    "Send channel messages": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送频道消息"
+          }
+        }
+      }
+    },
+    "Send server messages": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送服务器消息"
+          }
+        }
+      }
+    },
+    "Request talk power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "申请发言权"
+          }
+        }
+      }
+    },
+    "Ignore channel group permissions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许跳过频道组权限"
+          }
+        }
+      }
+    },
+    "File browse power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览频道文件的权限等级"
+          }
+        }
+      }
+    },
+    "File upload power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传文件的权限等级"
+          }
+        }
+      }
+    },
+    "File download power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下载文件的权限等级"
+          }
+        }
+      }
+    },
+    "File delete power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除文件的权限等级"
+          }
+        }
+      }
+    },
+    "File rename power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名文件的权限等级"
+          }
+        }
+      }
+    },
+    "Create directory power": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建文件夹的权限等级"
+          }
+        }
+      }
+    },
+    "Other value (#%lld)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他值（%lld）"
+          }
+        }
+      }
+    },
+    "Value: %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "权限值：%lld"
+          }
+        }
+      }
+    },
+    "Use ID": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用此编号"
+          }
+        }
+      }
+    },
+    "The server permission catalog is unavailable. Enter an ID supplied by the server or administrator.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器的权限目录不可用。请输入服务器或管理员提供的权限编号。"
+          }
+        }
+      }
+    },
+    "Save to Draft": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存入草稿"
           }
         }
       }

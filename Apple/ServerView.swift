@@ -14,6 +14,8 @@ struct ServerView: View {
     #if DEBUG
     @State private var showingFilesPreview = false
     @State private var showingLogPreview = false
+    #endif
+    #if DEBUG && os(macOS)
     @State private var showingPermissionPreview = false
     #endif
     @State private var managingIdentities = false
@@ -105,6 +107,8 @@ struct ServerView: View {
                 .sheet(isPresented: $showingFilesPreview) { OfflineFilesView() }
             Button("Offline server log") { showingLogPreview = true }
                 .sheet(isPresented: $showingLogPreview) { OfflineServerLogView() }
+            #endif
+            #if DEBUG && os(macOS)
             Button("Offline permission preview") { showingPermissionPreview = true }
                 .sheet(isPresented: $showingPermissionPreview) { OfflinePermissionsView() }
             #endif

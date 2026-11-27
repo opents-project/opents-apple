@@ -37,7 +37,12 @@ struct OpenTSApp: App {
                     Button { tabs.connect(to: bookmark) } label: { Text(verbatim: bookmark.name) }
                 }
             }
+            PermissionCommands(tabs: tabs)
         }
+        Window("Permissions", id: PermissionDirectoryWindow.windowID) {
+            PermissionDirectoryWindow(tabs: tabs)
+        }
+        .defaultSize(width: 1080, height: 620)
         MenuBarExtra("OpenTS", systemImage: tabs.hasActiveConnection ? "waveform.circle.fill" : "waveform") {
             StatusMenu(tabs: tabs, model: tabs.selected.model, updater: updater)
         }
@@ -54,6 +59,23 @@ struct OpenTSApp: App {
 }
 
 #if os(macOS)
+private struct PermissionCommands: Commands {
+    @ObservedObject var tabs: ServerTabs
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandMenu("Tools") {
+            Button("Group permissions", action: show)
+                .disabled(tabs.selected.model.groupPermissionSession == nil)
+        }
+    }
+
+    private func show() {
+        guard tabs.requestPermissionDirectory() else { return }
+        openWindow(id: PermissionDirectoryWindow.windowID)
+    }
+}
+
 private struct StatusMenu: View {
     @ObservedObject var tabs: ServerTabs
     @ObservedObject var model: ServerModel

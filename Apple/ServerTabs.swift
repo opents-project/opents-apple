@@ -23,6 +23,14 @@ final class ServerTabs: ObservableObject {
     @Published var connection: Connection?
     private var observers: [Tab.ID: AnyCancellable] = [:]
     #if os(macOS)
+    struct PermissionDirectory: Identifiable {
+        let id = UUID()
+        let session: Session
+        let generation: UInt64
+        let server: String
+    }
+
+    @Published var permissionDirectory: PermissionDirectory?
     private var audioLease: (token: UUID, target: Tab)?
     #endif
 
@@ -108,6 +116,16 @@ final class ServerTabs: ObservableObject {
     }
 
     #if os(macOS)
+    func requestPermissionDirectory() -> Bool {
+        let model = selected.model
+        guard let session = model.groupPermissionSession else { return false }
+        if let permissionDirectory, permissionDirectory.session === session,
+           permissionDirectory.generation == model.groupPermissionGeneration { return true }
+        permissionDirectory = PermissionDirectory(session: session, generation: model.groupPermissionGeneration,
+                                                   server: model.server)
+        return true
+    }
+
     func leaseAudio(for tab: Tab) -> UUID? {
         guard audioLease == nil, entries.contains(where: { $0.id == tab.id }),
               tab.model.active, !tab.model.server.isEmpty else { return nil }

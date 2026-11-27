@@ -7,7 +7,9 @@ pub use files::{ChannelFileJob, ChannelFileResult, RemoteChannelFile};
 mod identity;
 pub use identity::{parse_identity_export, stored_identity_uid, ImportedIdentity};
 mod group_management;
-pub use group_management::{GroupPermission, GroupPermissionResponse};
+pub use group_management::{
+    GroupPermission, GroupPermissionResponse, PermissionDefinition, ServerGroupMember,
+};
 mod member_quality;
 mod permissions;
 pub use permissions::{
@@ -26,6 +28,7 @@ pub fn generate_identity() -> String {
     let id = Identity::create();
     format!("{}V{}", id.counter(), id.key().to_ts())
 }
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -426,6 +429,7 @@ async fn run(
     let mut server_key = None;
     let mut audio_generation = 0;
     let mut pending_group: Option<group_management::Pending> = None;
+    let mut deleted_channel_groups = HashSet::new();
     let group_deadline = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(group_deadline);
     let mut pending_chat: Option<(tsclientlib::MessageHandle, chat::SendRequest, String)> = None;
@@ -599,7 +603,10 @@ async fn run(
                 subscription.send(&mut con).map_err(|e| e.to_string())?;
             }
             StreamItem::MessageEvent(
-                message @ (InMessage::ServerGroupPermList(_) | InMessage::ChannelGroupPermList(_)),
+                message @ (InMessage::ServerGroupPermList(_)
+                | InMessage::ChannelGroupPermList(_)
+                | InMessage::ServerGroupClientList(_)
+                | InMessage::PermList(_)),
             ) => {
                 if let Some(p) = &mut pending_group {
                     p.observe(&message);
@@ -610,6 +617,10 @@ async fn run(
                 if pending_group.as_ref().is_some_and(|p| p.handle == handle) =>
             {
                 if let Some(p) = pending_group.take() {
+                    if let Some(group) = p.confirmed_channel_deletion(&result) {
+                        deleted_channel_groups.insert(group);
+                        state.lock().unwrap().channel_groups.retain(|entry| entry.id != group);
+                    }
                     p.finish(&con, result);
                 }
                 continue;
@@ -691,6 +702,9 @@ async fn run(
                 continue;
             }
             StreamItem::BookEvents(events) if ready => {
+                if let Some(p) = &mut pending_group {
+                    p.observe_book_events(&events);
+                }
                 io.voice.member_quality.lock().unwrap().observe(
                     &con,
                     &events,
@@ -717,6 +731,7 @@ async fn run(
                 if let Some(mut p) = pending_group.take() {
                     p.fail("Connection interrupted");
                 }
+                deleted_channel_groups.clear();
                 ready = false;
                 last_codec = None;
                 PendingJoin::finish_with_error(&mut pending, "Connection interrupted".into());
@@ -834,6 +849,9 @@ async fn run(
             .map(|client| client.id.0)
             .collect();
         peer_ids.sort_unstable();
+        let mut channel_groups = group_management::listed_groups(book, GroupKind::Channel, true);
+        // The pinned bookkeeping library keeps old list entries until reconnect.
+        channel_groups.retain(|group| !deleted_channel_groups.contains(&group.id));
         *state.lock().unwrap() = Snapshot {
             server: book.server.name.clone(),
             server_key: server_key.clone(),
@@ -841,7 +859,7 @@ async fn run(
             reconnecting: false,
             audio_generation,
             rooms,
-            channel_groups: group_management::listed_groups(book, GroupKind::Channel, true),
+            channel_groups,
             current_channel: current_channel.map(|channel| channel.0),
             peer_ids,
             error: None,
