@@ -160,6 +160,14 @@ struct ConnectedServerView: View {
     }
 
     var body: some View {
+        #if os(macOS)
+        connectionDialogs(memberGroupDialogs)
+        #else
+        connectionDialogs(observedConnection)
+        #endif
+    }
+
+    private var connectionLayout: some View {
         GeometryReader { geometry in
             let narrow = geometry.size.width < 600
             let alongside = geometry.size.width >= 980
@@ -210,6 +218,10 @@ struct ConnectedServerView: View {
                               showsDeviceButtons: showsBottomDeviceButtons)
             }
         }
+    }
+
+    private var observedConnection: some View {
+        connectionLayout
         .onChange(of: location, initial: true) { old, new in
             updateLocation(new, followingReconnect: old.retrying)
         }
@@ -241,7 +253,11 @@ struct ConnectedServerView: View {
         .sheet(item: $fileTarget) { target in
             ChannelFilesView(session: target.session, room: target.room)
         }
-        #if os(macOS)
+    }
+
+    #if os(macOS)
+    private var memberGroupDialogs: some View {
+        observedConnection
         .sheet(item: $memberGroupAssignment) { target in
             MemberGroupAssignmentView(model: model, target: target)
         }
@@ -270,7 +286,19 @@ struct ConnectedServerView: View {
         } message: { error in
             Text(verbatim: error)
         }
-        #endif
+    }
+    #endif
+
+    private var showingJoinError: Binding<Bool> {
+        Binding {
+            tabSelected && model.joinError != nil
+        } set: { visible in
+            if !visible, tabSelected { model.joinError = nil }
+        }
+    }
+
+    private func connectionDialogs(_ content: some View) -> some View {
+        content
         .sheet(item: $playbackTarget) { target in
             if let member = findMember(target)?.member, let voice = model.audio.voice {
                 MemberPlaybackSettings(member: member, voice: voice)
@@ -302,7 +330,7 @@ struct ConnectedServerView: View {
             Button("Join") { model.join(room, password: password); password = "" }
             Button("Cancel", role: .cancel) { password = "" }
         } message: { Text($0.name) }
-        .alert("Couldn’t Join Channel", isPresented: Binding(get: { tabSelected && model.joinError != nil }, set: { if !$0, tabSelected { model.joinError = nil } })) {
+        .alert("Couldn’t Join Channel", isPresented: showingJoinError) {
             Button("OK") { model.joinError = nil }
         } message: { Text(model.joinError ?? "") }
     }
