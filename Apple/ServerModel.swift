@@ -72,7 +72,8 @@ final class ServerModel: ObservableObject {
     private var session: Session?
     private var observer: Task<Void, Never>?
 
-    var groupPermissionSession: Session? { reconnecting || server.isEmpty ? nil : session }
+    var connectedSession: Session? { reconnecting || server.isEmpty ? nil : session }
+    var groupPermissionSession: Session? { connectedSession }
     var groupPermissionGeneration: UInt64 { generation }
 
     private static var defaultNickname: String {

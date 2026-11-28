@@ -17,6 +17,8 @@ pub use permissions::{
     PermissionSource,
 };
 mod receive_audio;
+mod server_log;
+pub use server_log::ServerLogResponse;
 mod voice;
 pub use chat::{ChatLine, ChatScope};
 use futures::StreamExt;
@@ -143,6 +145,7 @@ pub struct Session {
     inbox: Arc<Mutex<chat::Inbox>>,
     messages: mpsc::Sender<chat::SendRequest>,
     group_requests: mpsc::Sender<group_management::Request>,
+    log_requests: mpsc::Sender<server_log::Request>,
     member_details: watch::Sender<Option<MemberDetailsRequest>>,
     file_requests: mpsc::Sender<files::Request>,
     joins: mpsc::Sender<JoinRequest>,
@@ -169,6 +172,7 @@ impl Session {
         let (messages, chat_requests) = mpsc::channel(1);
         let (channel_changes, changes) = mpsc::channel(1);
         let (group_requests, group_receiver) = mpsc::channel(1);
+        let (log_requests, log_receiver) = mpsc::channel(1);
         let (member_details, member_details_rx) = watch::channel(None);
         let (file_requests, file_rx) = mpsc::channel(4);
         let (joins, requests) = mpsc::channel(1);
@@ -189,6 +193,7 @@ impl Session {
                         changes,
                         chat_requests,
                         group_receiver,
+                        log_receiver,
                         member_details_rx,
                         file_rx,
                         &worker_inbox,
@@ -210,6 +215,7 @@ impl Session {
             inbox,
             messages,
             group_requests,
+            log_requests,
             member_details,
             file_requests,
             joins,
@@ -398,6 +404,7 @@ async fn run(
     mut changes: mpsc::Receiver<channel_management::Request>,
     mut chat_requests: mpsc::Receiver<chat::SendRequest>,
     mut group_receiver: mpsc::Receiver<group_management::Request>,
+    mut log_receiver: mpsc::Receiver<server_log::Request>,
     mut member_details_rx: watch::Receiver<Option<MemberDetailsRequest>>,
     mut file_rx: mpsc::Receiver<files::Request>,
     inbox: &Mutex<chat::Inbox>,
@@ -432,6 +439,9 @@ async fn run(
     let mut deleted_channel_groups = HashSet::new();
     let group_deadline = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(group_deadline);
+    let mut pending_log: Option<server_log::Pending> = None;
+    let log_deadline = tokio::time::sleep(Duration::ZERO);
+    tokio::pin!(log_deadline);
     let mut pending_chat: Option<(tsclientlib::MessageHandle, chat::SendRequest, String)> = None;
     let chat_deadline = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(chat_deadline);
@@ -501,6 +511,20 @@ async fn run(
                 group_management::Pending::start(request, &mut con, ready, audio_generation, &mut pending_group);
                 if idle {
                     group_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(10));
+                }
+                continue;
+            }
+            _ = &mut log_deadline, if pending_log.as_ref().is_some_and(|log| log.waiting()) => {
+                if let Some(log) = &mut pending_log {
+                    log.fail("Server log request timed out");
+                }
+                continue;
+            }
+            Some(request) = log_receiver.recv() => {
+                let idle = pending_log.is_none();
+                server_log::Pending::start(request, &mut con, ready, audio_generation, &mut pending_log);
+                if idle && pending_log.is_some() {
+                    log_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(10));
                 }
                 continue;
             }
@@ -625,6 +649,20 @@ async fn run(
                 }
                 continue;
             }
+            StreamItem::MessageEvent(InMessage::ServerLog(page)) => {
+                if let Some(log) = &mut pending_log {
+                    log.observe(&page);
+                }
+                continue;
+            }
+            StreamItem::MessageResult(handle, result)
+                if pending_log.as_ref().is_some_and(|log| log.handle == handle) =>
+            {
+                if let Some(log) = pending_log.take() {
+                    log.finish(result);
+                }
+                continue;
+            }
             StreamItem::NetworkStatsUpdated => {
                 if let Ok(stats) = con.get_network_stats() {
                     io.voice.update_quality(stats);
@@ -730,6 +768,9 @@ async fn run(
                 }
                 if let Some(mut p) = pending_group.take() {
                     p.fail("Connection interrupted");
+                }
+                if let Some(mut log) = pending_log.take() {
+                    log.fail("Connection interrupted");
                 }
                 deleted_channel_groups.clear();
                 ready = false;

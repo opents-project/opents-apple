@@ -3675,6 +3675,26 @@
         }
       }
     },
+    "Permission #%lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "权限 #%lld"
+          }
+        }
+      }
+    },
+    "Server log · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器日志 · %@"
+          }
+        }
+      }
+    },
     "Server log": {
       "extractionState": "manual",
       "localizations": {
