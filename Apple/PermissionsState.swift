@@ -39,14 +39,14 @@ enum PermissionSample: CaseIterable {
         switch self {
         case .populated:
             let assignments = [
-                PermissionAssignment(source: .serverGroup(groupId: 6), value: 25, negated: false, skip: false),
-                PermissionAssignment(source: .client(clientDbId: 12), value: 40, negated: false, skip: true)
+                PermissionAssignment(source: .serverGroup(groupId: 6), value: 25, negated: false, skip: false, setsEffectiveValue: false),
+                PermissionAssignment(source: .client(clientDbId: 12), value: 40, negated: false, skip: true, setsEffectiveValue: true)
             ]
             return PermissionsState(groups: .loaded(groups), overview: .loaded(PermissionOverview(
                 clientDbId: 12, channelId: 3, permissions: [
                     EffectivePermission(id: 401, name: "example_power", effectiveValue: 40, assignments: assignments),
                     EffectivePermission(id: 402, name: nil, effectiveValue: nil, assignments: [
-                        PermissionAssignment(source: .channelGroup(channelId: 3, groupId: 6), value: -1, negated: true, skip: false)
+                        PermissionAssignment(source: .channelGroup(channelId: 3, groupId: 6), value: -1, negated: true, skip: false, setsEffectiveValue: false)
                     ])
                 ])))
         case .empty:

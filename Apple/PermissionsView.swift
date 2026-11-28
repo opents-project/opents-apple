@@ -10,35 +10,7 @@ struct PermissionsView: View {
             groupSection("Server groups", kind: .server)
             groupSection("Channel groups", kind: .channel)
         }
-        Section("Effective permissions") {
-            if let error = state.overview.errorMessage {
-                Text(error).foregroundStyle(.secondary)
-            } else if case let .loaded(overview) = state.overview {
-                LabeledContent("Client database ID", value: String(overview.clientDbId))
-                LabeledContent("Channel ID", value: String(overview.channelId))
-                if overview.permissions.isEmpty { Text("No permissions returned.").foregroundStyle(.secondary) }
-                ForEach(overview.permissions, id: \.id) { permission in
-                    DisclosureGroup {
-                        ForEach(Array(permission.assignments.enumerated()), id: \.offset) { _, assignment in
-                            VStack(alignment: .leading) {
-                                LabeledContent { Text(verbatim: String(assignment.value)) } label: { source(assignment.source) }
-                                if assignment.negated { Text("Negated").font(.caption) }
-                                if assignment.skip { Text("Skip").font(.caption) }
-                            }
-                        }
-                    } label: {
-                        VStack(alignment: .leading) {
-                            Text(verbatim: permission.name.map { "\($0) (#\(permission.id))" } ?? "#\(permission.id)")
-                            if let value = permission.effectiveValue {
-                                Text("Effective value: \(String(value))").font(.caption)
-                            } else {
-                                Text("Effective value unavailable").font(.caption)
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        PermissionOverviewSection(state: state.overview)
     }
 
     private func groupSection(_ title: LocalizedStringKey, kind: GroupKind) -> some View {
@@ -47,6 +19,69 @@ struct PermissionsView: View {
             if rows.isEmpty { Text("No groups returned.").foregroundStyle(.secondary) }
             ForEach(rows, id: \.id) { group in
                 LabeledContent { Text(verbatim: "#\(group.id)") } label: { Text(verbatim: group.name) }
+            }
+        }
+    }
+
+}
+
+private struct PermissionOverviewSection: View {
+    let state: PermissionRead<PermissionOverview>
+    var search = ""
+
+    var body: some View {
+        Section("Effective permissions") {
+            if let error = state.errorMessage {
+                Text(error).foregroundStyle(.secondary)
+            } else if case let .loaded(overview) = state {
+                LabeledContent("Client database ID", value: String(overview.clientDbId))
+                LabeledContent("Channel ID", value: String(overview.channelId))
+                if overview.permissions.isEmpty {
+                    Text("No permissions returned.").foregroundStyle(.secondary)
+                } else {
+                    if overview.permissions.contains(where: { $0.effectiveValue == nil }) {
+                        Text("Some effective values could not be determined from the server’s assignments.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    let permissions = overview.permissions.filter(matchesSearch)
+                    if permissions.isEmpty {
+                        Text("No matching permissions").foregroundStyle(.secondary)
+                    }
+                    ForEach(permissions, id: \.id, content: permissionRow)
+                }
+            }
+        }
+    }
+
+    private func matchesSearch(_ permission: EffectivePermission) -> Bool {
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty
+            || (permission.name?.localizedCaseInsensitiveContains(query) ?? false)
+            || "#\(permission.id)".contains(query)
+    }
+
+    private func permissionRow(_ permission: EffectivePermission) -> some View {
+        DisclosureGroup {
+            ForEach(Array(permission.assignments.enumerated()), id: \.offset) { _, assignment in
+                VStack(alignment: .leading) {
+                    LabeledContent { Text(verbatim: String(assignment.value)) } label: { source(assignment.source) }
+                    HStack {
+                        if assignment.setsEffectiveValue { Text("Sets effective value") }
+                        if assignment.negated { Text("Negated") }
+                        if assignment.skip { Text("Skip") }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+        } label: {
+            VStack(alignment: .leading) {
+                Text(verbatim: permission.name.map { "\($0) (#\(permission.id))" } ?? "#\(permission.id)")
+                if let value = permission.effectiveValue {
+                    Text("Effective value: \(String(value))").font(.caption)
+                } else {
+                    Text("Effective value unavailable").font(.caption)
+                }
             }
         }
     }
@@ -61,6 +96,86 @@ struct PermissionsView: View {
         }
     }
 }
+
+#if os(macOS)
+struct MemberPermissionsView: View {
+    @ObservedObject var model: ServerModel
+    let target: MemberGroupAssignmentTarget
+    @Environment(\.dismiss) private var dismiss
+    @State private var result: PermissionRead<PermissionOverview>?
+    @State private var attempt = 0
+    @State private var search = ""
+
+    private var member: (member: RoomMember, room: Room)? { target.displayedMember(in: model) }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let member {
+                    Section {
+                        LabeledContent("Member", value: member.member.name)
+                        LabeledContent("Channel", value: member.room.name)
+                    }
+                    if let result {
+                        PermissionOverviewSection(state: result, search: search)
+                    } else {
+                        ProgressView("Loading permissions…")
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            .searchable(text: $search, prompt: Text("Search permissions"))
+            .navigationTitle("Effective permissions")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        result = nil
+                        attempt += 1
+                    } label: {
+                        if result?.errorMessage == nil {
+                            Text("Refresh")
+                        } else {
+                            Text("Retry")
+                        }
+                    }
+                    .disabled(result == nil)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .frame(minWidth: 540, minHeight: 480)
+        .onChange(of: member == nil, initial: true) { _, missing in
+            if missing { dismiss() }
+        }
+        .task(id: attempt) { await load() }
+    }
+
+    @MainActor private func load() async {
+        guard target.liveMember(in: model) != nil else {
+            dismiss()
+            return
+        }
+        let response = await target.session.memberPermissionOverview(
+            clientId: target.member.clientID, databaseId: target.member.databaseID,
+            channel: target.channel, generation: target.member.generation
+        )
+        guard !Task.isCancelled else { return }
+        guard target.liveMember(in: model) != nil else {
+            dismiss()
+            return
+        }
+        if response.denied {
+            result = .denied(permissionID: response.missingPermission)
+        } else if let overview = response.overview {
+            result = .loaded(overview)
+        } else {
+            result = .failed(response.error ?? String(localized: "Permission response was incomplete."))
+        }
+    }
+}
+#endif
 
 #if DEBUG
 struct OfflinePermissionsView: View {

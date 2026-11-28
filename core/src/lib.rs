@@ -13,7 +13,7 @@ pub use group_management::{
 mod member_quality;
 mod permissions;
 pub use permissions::{
-    EffectivePermission, GroupKind, ListedGroup, PermissionAssignment, PermissionOverview,
+    EffectivePermission, GroupKind, ListedGroup, PermissionAssignment, PermissionOverview, PermissionOverviewResponse,
     PermissionSource,
 };
 mod receive_audio;
@@ -630,7 +630,8 @@ async fn run(
                 message @ (InMessage::ServerGroupPermList(_)
                 | InMessage::ChannelGroupPermList(_)
                 | InMessage::ServerGroupClientList(_)
-                | InMessage::PermList(_)),
+                | InMessage::PermList(_)
+                | InMessage::PermOverview(_)),
             ) => {
                 if let Some(p) = &mut pending_group {
                     p.observe(&message);

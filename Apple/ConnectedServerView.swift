@@ -34,6 +34,7 @@ struct ConnectedServerView: View {
     @State private var password = ""
     #if os(macOS)
     @State private var memberGroupAssignment: MemberGroupAssignmentTarget?
+    @State private var memberPermissionTarget: MemberGroupAssignmentTarget?
     @State private var changingChannelGroup = false
     @State private var channelGroupError: String?
     @State private var ownChannelGroupChange: ChannelGroupChange?
@@ -308,9 +309,13 @@ struct ConnectedServerView: View {
         .sheet(item: $memberGroupAssignment) { target in
             MemberGroupAssignmentView(model: model, target: target)
         }
+        .sheet(item: $memberPermissionTarget) { target in
+            MemberPermissionsView(model: model, target: target)
+        }
         .onChange(of: tabSelected) { _, selected in
             if !selected {
                 memberGroupAssignment = nil
+                memberPermissionTarget = nil
                 ownChannelGroupChange = nil
                 channelGroupError = nil
             }
@@ -358,6 +363,7 @@ struct ConnectedServerView: View {
             if reconnecting {
                 #if os(macOS)
                 memberGroupAssignment = nil
+                memberPermissionTarget = nil
                 ownChannelGroupChange = nil
                 channelGroupError = nil
                 #endif
@@ -515,6 +521,10 @@ struct ConnectedServerView: View {
                             memberGroupAssignment = assignment
                         }
                         channelGroupMenu(for: member, target: assignment)
+                        Button("Effective permissions", systemImage: "checklist") {
+                            guard tabSelected, assignment.liveMember(in: model) != nil else { return }
+                            memberPermissionTarget = assignment
+                        }
                     }
                     #endif
                 }

@@ -1,6 +1,7 @@
 //! Group permission commands share one ordered request stream. Permission-list notifications
 //! identify their group but carry no return code. The command's acknowledgement ends the list.
-use super::{GroupKind, ListedGroup, Session};
+use super::{GroupKind, ListedGroup, PermissionOverviewResponse, Session};
+use crate::permissions::{OverviewRows, WireAssignment};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use tokio::sync::oneshot;
 use tsclientlib::events::{Event, PropertyId};
@@ -106,6 +107,10 @@ enum Action {
     Copy(String),
     Delete,
     Catalog,
+    Overview {
+        target: MemberTarget,
+        channel: ChannelId,
+    },
     Read,
     Set(GroupPermission),
     Remove(u32),
@@ -132,6 +137,15 @@ impl MemberTarget {
         }
     }
 
+    fn validate_online(&self, con: &Connection, channel: ChannelId) -> Result<(), String> {
+        let book = con.get_state().map_err(|error| error.to_string())?;
+        let client = book
+            .clients
+            .get(&self.client_id)
+            .map(|client| (client.database_id, client.channel, client.client_type));
+        self.validate(client, Some(channel)).map_err(str::to_owned)
+    }
+
     fn validate(
         &self,
         client: Option<(ClientDbId, ChannelId, ClientType)>,
@@ -150,12 +164,27 @@ impl MemberTarget {
     }
 }
 
+#[derive(Default)]
+struct PendingResponse {
+    group: GroupPermissionResponse,
+    overview: Option<PermissionOverviewResponse>,
+}
+
+impl From<GroupPermissionResponse> for PendingResponse {
+    fn from(group: GroupPermissionResponse) -> Self {
+        Self {
+            group,
+            overview: None,
+        }
+    }
+}
+
 pub(crate) struct Request {
     kind: GroupKind,
     group: u64,
     generation: u64,
     action: Action,
-    reply: oneshot::Sender<GroupPermissionResponse>,
+    reply: oneshot::Sender<PendingResponse>,
 }
 
 #[uniffi::export]
@@ -238,6 +267,63 @@ impl Session {
     ) -> GroupPermissionResponse {
         self.group_request(kind, group, generation, Action::Delete)
             .await
+    }
+
+    pub async fn member_permission_overview(
+        &self,
+        client_id: u16,
+        database_id: u64,
+        channel: u64,
+        generation: u64,
+    ) -> PermissionOverviewResponse {
+        let response = self
+            .permission_request(
+                GroupKind::Server,
+                0,
+                generation,
+                Action::Overview {
+                    target: MemberTarget::new(client_id, database_id),
+                    channel: ChannelId(channel),
+                },
+            )
+            .await;
+        let mut response = response.overview.unwrap_or(PermissionOverviewResponse {
+            error: response.group.error,
+            ..Default::default()
+        });
+        if let Some(data) = response
+            .overview
+            .as_mut()
+            .filter(|data| !data.permissions.is_empty())
+        {
+            let catalog = self.permission_catalog(generation).await;
+            data.resolve(&catalog.definitions);
+        }
+        if response.overview.is_some() {
+            let snapshot = self.snapshot();
+            if snapshot.reconnecting || snapshot.audio_generation != generation {
+                return PermissionOverviewResponse {
+                    error: Some("Connection interrupted".into()),
+                    ..Default::default()
+                };
+            }
+            let target_is_present = snapshot
+                .rooms
+                .iter()
+                .find(|room| room.id == channel)
+                .is_some_and(|room| {
+                    room.member_details.iter().any(|member| {
+                        member.client_id == client_id && member.database_id == database_id
+                    })
+                });
+            if !target_is_present {
+                return PermissionOverviewResponse {
+                    error: Some("Member is no longer available in this channel".into()),
+                    ..Default::default()
+                };
+            }
+        }
+        response
     }
 
     pub async fn permission_catalog(&self, generation: u64) -> GroupPermissionResponse {
@@ -340,6 +426,18 @@ impl Session {
         generation: u64,
         action: Action,
     ) -> GroupPermissionResponse {
+        self.permission_request(kind, group, generation, action)
+            .await
+            .group
+    }
+
+    async fn permission_request(
+        &self,
+        kind: GroupKind,
+        group: u64,
+        generation: u64,
+        action: Action,
+    ) -> PendingResponse {
         let (reply, received) = oneshot::channel();
         if self
             .group_requests
@@ -353,11 +451,11 @@ impl Session {
             .await
             .is_err()
         {
-            return GroupPermissionResponse::failed("Connection closed");
+            return GroupPermissionResponse::failed("Connection closed").into();
         }
         received
             .await
-            .unwrap_or_else(|_| GroupPermissionResponse::failed("Connection closed"))
+            .unwrap_or_else(|_| GroupPermissionResponse::failed("Connection closed").into())
     }
 }
 
@@ -369,6 +467,7 @@ impl Request {
                 | Action::AssignableGroups
                 | Action::DirectoryGroups
                 | Action::Catalog
+                | Action::Overview { .. }
                 | Action::Create(_)
         ) && self.group == 0
         {
@@ -388,12 +487,18 @@ impl Request {
             Action::Set(p) if matches!(self.kind, GroupKind::Channel) && (p.negated || p.skip) => {
                 Err("Channel group permissions do not support Negated or Skip")
             }
-            Action::ServerMembership { target, .. } | Action::ChannelMembership { target, .. }
+            Action::ServerMembership { target, .. }
+            | Action::ChannelMembership { target, .. }
+            | Action::Overview { target, .. }
                 if target.client_id.0 == 0 || target.database_id.0 == 0 =>
             {
                 Err("Invalid member ID")
             }
             Action::ChannelMembership {
+                channel: ChannelId(0),
+                ..
+            }
+            | Action::Overview {
                 channel: ChannelId(0),
                 ..
             } => Err("Invalid channel ID"),
@@ -451,6 +556,9 @@ impl Request {
     }
 
     fn validate_assignment(&self, con: &Connection) -> Result<(), String> {
+        if let Action::Overview { target, channel } = &self.action {
+            return target.validate_online(con, *channel);
+        }
         let (target, channel) = match &self.action {
             Action::ServerMembership { target, .. } => (target, None),
             Action::ChannelMembership { target, channel } => (target, Some(*channel)),
@@ -486,6 +594,13 @@ impl Request {
         let channel_group = ChannelGroupId(self.group);
         Ok(match (&self.kind, &self.action) {
             (_, Action::Catalog) => OutPermListRequestMessage::new(),
+            (_, Action::Overview { target, channel }) => OutPermOverviewRequestPart {
+                channel_id: *channel,
+                client_db_id: target.database_id,
+                permission_id: Some(Permission(0)),
+                permission_name_id: None,
+            }
+            .to_packet(),
             (
                 GroupKind::Server,
                 Action::Groups | Action::AssignableGroups | Action::DirectoryGroups,
@@ -621,11 +736,12 @@ pub(crate) struct Pending {
     group: u64,
     action: Action,
     rows: Vec<GroupPermission>,
+    overview_rows: OverviewRows,
     definitions: Vec<PermissionDefinition>,
     next_permission_id: u32,
     directory_ids: HashSet<u64>,
     members: BTreeMap<u64, Option<String>>,
-    reply: Option<oneshot::Sender<GroupPermissionResponse>>,
+    reply: Option<oneshot::Sender<PendingResponse>>,
 }
 
 impl Pending {
@@ -660,6 +776,7 @@ impl Pending {
                     group: request.group,
                     action: request.action,
                     rows: Vec::new(),
+                    overview_rows: OverviewRows::default(),
                     definitions: Vec::new(),
                     next_permission_id: 1,
                     directory_ids: HashSet::new(),
@@ -668,10 +785,12 @@ impl Pending {
                 })
             }
             Ok(None) => {
-                let _ = request.reply.send(GroupPermissionResponse::default());
+                let _ = request.reply.send(PendingResponse::default());
             }
             Err(e) => {
-                let _ = request.reply.send(GroupPermissionResponse::failed(e));
+                let _ = request
+                    .reply
+                    .send(GroupPermissionResponse::failed(e).into());
             }
         }
     }
@@ -694,7 +813,7 @@ impl Pending {
 
     pub fn fail(&mut self, reason: &str) {
         if let Some(reply) = self.reply.take() {
-            let _ = reply.send(GroupPermissionResponse::failed(reason));
+            let _ = reply.send(GroupPermissionResponse::failed(reason).into());
         }
     }
 
@@ -704,6 +823,24 @@ impl Pending {
 
     pub fn observe(&mut self, message: &InMessage) {
         if !self.waiting() {
+            return;
+        }
+        if let Action::Overview { target, channel } = &self.action {
+            if let InMessage::PermOverview(list) = message {
+                for row in list.iter().filter(|row| {
+                    row.client_db_id == target.database_id && row.channel_id == *channel
+                }) {
+                    self.overview_rows.push(WireAssignment {
+                        id: row.permission_id.0,
+                        kind: row.permission_type,
+                        id1: row.id1,
+                        id2: row.id2,
+                        value: row.permission_value,
+                        negated: row.permission_negated,
+                        skip: row.permission_skip,
+                    });
+                }
+            }
             return;
         }
         if matches!(self.action, Action::ListServerGroupMembers) {
@@ -823,6 +960,45 @@ impl Pending {
         let Some(reply) = self.reply else {
             return;
         };
+        if let Action::Overview { target, channel } = &self.action {
+            let mut response = PermissionOverviewResponse::default();
+            let accepted = match result {
+                Ok(()) => true,
+                Err(error)
+                    if matches!(
+                        error.error,
+                        tsclientlib::TsError::PermissionEmptyResult
+                            | tsclientlib::TsError::DatabaseEmptyResult
+                    ) =>
+                {
+                    true
+                }
+                Err(error) => {
+                    response.denied = matches!(
+                        error.error,
+                        tsclientlib::TsError::PermissionsClientInsufficient
+                    ) || error.missing_permission.is_some();
+                    response.missing_permission =
+                        error.missing_permission.map(|permission| permission.0);
+                    response.error = Some(error.to_string());
+                    false
+                }
+            };
+            if accepted {
+                match target.validate_online(con, *channel) {
+                    Ok(()) => {
+                        response.overview =
+                            Some(self.overview_rows.finish(target.database_id.0, channel.0))
+                    }
+                    Err(error) => response.error = Some(error),
+                }
+            }
+            let _ = reply.send(PendingResponse {
+                overview: Some(response),
+                ..Default::default()
+            });
+            return;
+        }
         let mut response = GroupPermissionResponse::default();
         match result {
             Err(e)
@@ -906,7 +1082,7 @@ impl Pending {
                 response.permissions.sort_by_key(|p| p.id);
             }
         }
-        let _ = reply.send(response);
+        let _ = reply.send(response.into());
     }
 }
 
@@ -1006,6 +1182,7 @@ mod tests {
             group: 17,
             action: Action::ListServerGroupMembers,
             rows: Vec::new(),
+            overview_rows: OverviewRows::default(),
             definitions: Vec::new(),
             next_permission_id: 1,
             directory_ids: HashSet::new(),
@@ -1046,6 +1223,7 @@ mod tests {
             group: 17,
             action: Action::Delete,
             rows: Vec::new(),
+            overview_rows: OverviewRows::default(),
             definitions: Vec::new(),
             next_permission_id: 1,
             directory_ids: HashSet::new(),
@@ -1065,6 +1243,90 @@ mod tests {
         pending.kind = GroupKind::Channel;
         pending.action = Action::Rename("New name".into());
         assert_eq!(pending.confirmed_channel_deletion(&Ok(())), None);
+    }
+
+    #[test]
+    fn member_permissions_use_native_overview_and_match_both_target_ids() {
+        let action = || Action::Overview {
+            target: MemberTarget::new(7, 902),
+            channel: ChannelId(54),
+        };
+        assert_eq!(
+            wire(request(GroupKind::Server, action())),
+            "permoverview cid=54 cldbid=902 permid=0"
+        );
+        let mut bytes = [0u8; 11];
+        bytes[10] = PacketType::Command as u8;
+        let header = InHeader::new(Direction::S2C, &bytes);
+        let mut pending = Pending {
+            handle: MessageHandle(55),
+            kind: GroupKind::Server,
+            group: 0,
+            action: action(),
+            rows: Vec::new(),
+            overview_rows: OverviewRows::default(),
+            definitions: Vec::new(),
+            next_permission_id: 1,
+            directory_ids: HashSet::new(),
+            members: BTreeMap::new(),
+            reply: Some(oneshot::channel().0),
+        };
+        let wire = concat!(
+            "notifypermoverview cldbid=902 cid=54 t=0 id1=6 id2=0 p=41 v=50 n=0 s=0",
+            "|t=1 id1=902 id2=0 p=41 v=-1 n=0 s=1",
+            "|t=2 id1=54 id2=0 p=41 v=5 n=0 s=0",
+            "|t=3 id1=54 id2=9 p=41 v=10 n=0 s=0",
+            "|t=4 id1=54 id2=902 p=41 v=0 n=0 s=0",
+            "|cldbid=903 t=4 id1=54 id2=903 p=42 v=70 n=0 s=0",
+            "|cid=55 t=0 id1=99 id2=0 p=43 v=70 n=0 s=0",
+        );
+        pending.observe(&InMessage::new(&header, wire.as_bytes()).unwrap());
+        pending.fail("Permission request timed out");
+        pending.observe(&InMessage::new(&header, wire.as_bytes()).unwrap());
+        let mut overview = pending.overview_rows.finish(902, 54);
+        overview.resolve(&[]);
+        let [permission] = overview.permissions.as_slice() else {
+            panic!("unexpected permission rows")
+        };
+        assert_eq!(permission.id, 41);
+        assert_eq!(permission.effective_value, Some(0));
+        let [group, client, channel, channel_group, channel_client] =
+            permission.assignments.as_slice()
+        else {
+            panic!("expected five source assignments")
+        };
+        use super::super::PermissionSource;
+        assert!(matches!(
+            group.source,
+            PermissionSource::ServerGroup { group_id: 6 }
+        ));
+        assert!(matches!(
+            client.source,
+            PermissionSource::Client { client_db_id: 902 }
+        ));
+        assert!(matches!(
+            channel.source,
+            PermissionSource::Channel { channel_id: 54 }
+        ));
+        assert!(matches!(
+            channel_group.source,
+            PermissionSource::ChannelGroup {
+                channel_id: 54,
+                group_id: 9
+            }
+        ));
+        assert!(matches!(
+            channel_client.source,
+            PermissionSource::ChannelClient {
+                channel_id: 54,
+                client_db_id: 902
+            }
+        ));
+        assert!(channel_client.sets_effective_value);
+        assert_eq!(
+            (client.value, client.negated, client.skip),
+            (-1, false, true)
+        );
     }
 
     #[test]
@@ -1156,6 +1418,7 @@ mod tests {
             group: 0,
             action: Action::Catalog,
             rows: Vec::new(),
+            overview_rows: OverviewRows::default(),
             definitions: Vec::new(),
             next_permission_id: 1,
             directory_ids: HashSet::new(),
@@ -1225,6 +1488,7 @@ mod tests {
             group: 17,
             action: Action::Read,
             rows: Vec::new(),
+            overview_rows: OverviewRows::default(),
             definitions: Vec::new(),
             next_permission_id: 1,
             directory_ids: HashSet::new(),
@@ -1248,7 +1512,7 @@ mod tests {
             vec![(24, -3, true, false), (25, 50, false, true)]
         );
         pending.fail("Permission request timed out");
-        assert!(receiver.try_recv().unwrap().error.is_some());
+        assert!(receiver.try_recv().unwrap().group.error.is_some());
         pending.observe(
             &InMessage::new(
                 &header,

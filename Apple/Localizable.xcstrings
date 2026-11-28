@@ -1,6 +1,66 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Member": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "成员"
+          }
+        }
+      }
+    },
+    "Loading permissions…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在加载权限…"
+          }
+        }
+      }
+    },
+    "Search permissions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索权限"
+          }
+        }
+      }
+    },
+    "Permission response was incomplete.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "权限响应不完整。"
+          }
+        }
+      }
+    },
+    "Some effective values could not be determined from the server’s assignments.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器返回的赋值无法确定部分权限的有效值。"
+          }
+        }
+      }
+    },
+    "Sets effective value": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "决定有效值"
+          }
+        }
+      }
+    },
     "Push to Talk Panel": {
       "localizations": {
         "zh-Hans": {
