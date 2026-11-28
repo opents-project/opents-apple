@@ -57,6 +57,14 @@ pub enum ChannelChange {
         password: Option<String>,
         description: Option<String>,
     },
+    Move {
+        channel: u64,
+        parent: u64,
+        predecessor: u64,
+    },
+    Delete {
+        channel: u64,
+    },
 }
 
 pub struct Request {
@@ -140,6 +148,66 @@ impl ChannelChange {
                     update = update.set_description(description);
                 }
                 update.to_packet()
+            }
+            Self::Move {
+                channel,
+                parent,
+                predecessor,
+            } => {
+                let channel = ChannelId(channel);
+                let parent = ChannelId(parent);
+                let predecessor = ChannelId(predecessor);
+                let room = book
+                    .channels
+                    .get(&channel)
+                    .ok_or("Channel is unavailable.")?;
+                let mut ancestor = parent;
+                for _ in 0..=book.channels.len() {
+                    if ancestor == ChannelId(0) {
+                        break;
+                    }
+                    if ancestor == channel {
+                        return Err("A channel cannot be moved inside itself.".into());
+                    }
+                    ancestor = book
+                        .channels
+                        .get(&ancestor)
+                        .ok_or("The parent channel is unavailable.")?
+                        .parent;
+                }
+                if ancestor != ChannelId(0) {
+                    return Err("The parent channel is unavailable.".into());
+                }
+                if predecessor != ChannelId(0)
+                    && (predecessor == channel
+                        || !book
+                            .channels
+                            .get(&predecessor)
+                            .is_some_and(|sibling| sibling.parent == parent))
+                {
+                    return Err("The selected channel position is unavailable.".into());
+                }
+                if room.parent == parent {
+                    room.edit().set_order(predecessor).to_packet()
+                } else {
+                    ts_bookkeeping::messages::c2s::OutChannelMovePart {
+                        channel_id: channel,
+                        parent_id: parent,
+                        order: Some(predecessor),
+                    }
+                    .to_packet()
+                }
+            }
+            Self::Delete { channel } => {
+                let channel = ChannelId(channel);
+                if !book.channels.contains_key(&channel) {
+                    return Err("Channel is unavailable.".into());
+                }
+                ts_bookkeeping::messages::c2s::OutChannelDeletePart {
+                    channel_id: channel,
+                    force: false,
+                }
+                .to_packet()
             }
         };
         command

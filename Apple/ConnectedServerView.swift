@@ -24,6 +24,9 @@ struct ConnectedServerView: View {
     @State private var showingChat = false
     @State private var chatSelection: ChatScope?
     @State private var editorTarget: ChannelEditorTarget?
+    @State private var channelPlacement: ChannelActionTarget?
+    @State private var channelDeletion: ChannelActionTarget?
+    @State private var channelDeletionError: String?
     @State private var fileTarget: ChannelFileTarget?
     @State private var playbackTarget: MemberSelection?
     @State private var showingIdentity = false
@@ -161,10 +164,54 @@ struct ConnectedServerView: View {
 
     var body: some View {
         #if os(macOS)
-        connectionDialogs(memberGroupDialogs)
+        channelActionDialogs(connectionDialogs(memberGroupDialogs))
         #else
-        connectionDialogs(observedConnection)
+        channelActionDialogs(connectionDialogs(observedConnection))
         #endif
+    }
+
+    private func channelActionDialogs(_ content: some View) -> some View {
+        content
+            .sheet(item: $channelPlacement) { target in
+                ChannelPlacementView(model: model, target: target)
+            }
+            .onChange(of: tabSelected) { _, selected in
+                if !selected {
+                    channelPlacement = nil
+                    channelDeletion = nil
+                    channelDeletionError = nil
+                }
+            }
+            .alert("Delete channel?", isPresented: Binding {
+                tabSelected && channelDeletion != nil
+            } set: { visible in
+                if !visible { channelDeletion = nil }
+            }, presenting: channelDeletion) { target in
+                Button("Cancel", role: .cancel) { }
+                Button("Delete channel", role: .destructive) {
+                    Task { await deleteChannel(target) }
+                }
+            } message: { target in
+                Text(verbatim: target.room.name)
+            }
+            .alert("Couldn’t Delete Channel", isPresented: Binding {
+                tabSelected && channelDeletionError != nil
+            } set: { visible in
+                if !visible, tabSelected { channelDeletionError = nil }
+            }) {
+                Button("OK") { channelDeletionError = nil }
+            } message: {
+                if let channelDeletionError {
+                    Text(NSLocalizedString(channelDeletionError, comment: "Channel deletion error"))
+                }
+            }
+    }
+
+    private func deleteChannel(_ target: ChannelActionTarget) async {
+        guard tabSelected, model.room(target.room.id) != nil else { return }
+        let error = await model.changeChannel(.delete(channel: target.room.id), generation: target.generation)
+        guard tabSelected, model.generation == target.generation else { return }
+        channelDeletionError = error
     }
 
     private var connectionLayout: some View {
@@ -575,10 +622,20 @@ struct ConnectedServerView: View {
                 editorTarget = ChannelEditorTarget(parent: room.id, room: nil, generation: generation)
             }
             .disabled(model.reconnecting)
+            Button("Move channel", systemImage: "folder.badge.arrow.forward") {
+                guard let room = liveRoom() else { return }
+                channelPlacement = ChannelActionTarget(room: room, generation: generation)
+            }
+            .disabled(model.reconnecting)
             Button("Open channel files", systemImage: "folder") {
                 if let room = liveRoom() { openChannelFiles(room) }
             }
             .disabled(model.reconnecting || model.fileSession == nil)
+            Button("Delete channel", systemImage: "trash", role: .destructive) {
+                guard let room = liveRoom() else { return }
+                channelDeletion = ChannelActionTarget(room: room, generation: generation)
+            }
+            .disabled(model.reconnecting)
         }
     }
 

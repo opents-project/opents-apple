@@ -5443,6 +5443,126 @@
           }
         }
       }
+    },
+    "Move channel": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动频道"
+          }
+        }
+      }
+    },
+    "Channel position": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道位置"
+          }
+        }
+      }
+    },
+    "First in list": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排在最前"
+          }
+        }
+      }
+    },
+    "After %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排在 %@ 之后"
+          }
+        }
+      }
+    },
+    "Move": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动"
+          }
+        }
+      }
+    },
+    "Delete channel": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除频道"
+          }
+        }
+      }
+    },
+    "Delete channel?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要删除此频道吗？"
+          }
+        }
+      }
+    },
+    "Couldn’t Delete Channel": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除频道"
+          }
+        }
+      }
+    },
+    "Channel is unavailable.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "频道已不可用。"
+          }
+        }
+      }
+    },
+    "The parent channel is unavailable.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上级频道已不可用。"
+          }
+        }
+      }
+    },
+    "A channel cannot be moved inside itself.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法将频道移动到它自己或下级频道中。"
+          }
+        }
+      }
+    },
+    "The selected channel position is unavailable.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选频道位置已不可用。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

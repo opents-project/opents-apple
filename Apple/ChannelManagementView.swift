@@ -7,6 +7,12 @@ struct ChannelEditorTarget: Identifiable {
     let generation: UInt64
 }
 
+struct ChannelActionTarget: Identifiable {
+    let room: Room
+    let generation: UInt64
+    var id: UInt64 { room.id }
+}
+
 struct ChannelManagementView: View {
     @ObservedObject var model: ServerModel
     let target: ChannelEditorTarget
@@ -154,5 +160,97 @@ struct ChannelManagementView: View {
         #if os(macOS)
         .frame(minWidth: 400, minHeight: 350)
         #endif
+    }
+}
+
+struct ChannelPlacementView: View {
+    @ObservedObject var model: ServerModel
+    let target: ChannelActionTarget
+    @Environment(\.dismiss) private var dismiss
+    @State private var parent: UInt64
+    @State private var predecessor: UInt64
+    @State private var moving = false
+    @State private var error: String?
+
+    init(model: ServerModel, target: ChannelActionTarget) {
+        self.model = model
+        self.target = target
+        _parent = State(initialValue: target.room.parent)
+        _predecessor = State(initialValue: target.room.predecessor)
+    }
+
+    private struct ParentChannel: Identifiable {
+        let id: UInt64
+        let path: String
+        let children: [ChannelNode]
+    }
+
+    private var parents: [ParentChannel] {
+        func list(_ nodes: [ChannelNode], under prefix: String) -> [ParentChannel] {
+            nodes.flatMap { node -> [ParentChannel] in
+                guard node.id != target.room.id else { return [] }
+                let path = prefix.isEmpty ? node.room.name : "\(prefix) › \(node.room.name)"
+                let children = node.children ?? []
+                return [ParentChannel(id: node.id, path: path, children: children)] + list(children, under: path)
+            }
+        }
+        return [ParentChannel(id: 0, path: model.server, children: model.channels)] + list(model.channels, under: "")
+    }
+
+    private var canMove: Bool {
+        guard !moving, !model.reconnecting, model.generation == target.generation,
+              let room = model.room(target.room.id),
+              let destination = parents.first(where: { $0.id == parent }),
+              parent != room.parent || predecessor != room.predecessor else { return false }
+        return predecessor == 0 || destination.children.contains { $0.id == predecessor && $0.id != room.id }
+    }
+
+    var body: some View {
+        let destinations = parents
+        let siblings = destinations.first(where: { $0.id == parent })?.children ?? []
+        NavigationStack {
+            Form {
+                LabeledContent("Channel name", value: target.room.name)
+                Picker("Parent channel", selection: $parent) {
+                    ForEach(destinations) { option in
+                        Text(verbatim: option.path).tag(option.id)
+                    }
+                }
+                Picker("Channel position", selection: $predecessor) {
+                    Text("First in list").tag(UInt64(0))
+                    ForEach(siblings.filter { $0.id != target.room.id }) { node in
+                        Text("After \(node.room.name)").tag(node.id)
+                    }
+                }
+                if let error {
+                    Text(NSLocalizedString(error, comment: "Channel move error"))
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                }
+            }
+            .formStyle(.grouped)
+            .disabled(moving)
+            .navigationTitle("Move channel")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(moving) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Move") { Task { await move() } }.disabled(!canMove)
+                }
+            }
+        }
+        .onChange(of: parent) { _, _ in predecessor = 0 }
+        .interactiveDismissDisabled(moving)
+        #if os(macOS)
+        .frame(minWidth: 400, minHeight: 235)
+        #endif
+    }
+
+    private func move() async {
+        guard canMove else { return }
+        moving = true
+        error = await model.changeChannel(.move(channel: target.room.id, parent: parent, predecessor: predecessor),
+                                          generation: target.generation)
+        moving = false
+        if error == nil { dismiss() }
     }
 }
