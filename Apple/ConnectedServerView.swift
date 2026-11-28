@@ -35,6 +35,9 @@ struct ConnectedServerView: View {
     #if os(macOS)
     @State private var memberGroupAssignment: MemberGroupAssignmentTarget?
     @State private var memberPermissionTarget: MemberGroupAssignmentTarget?
+    @State private var memberDragTargets = MemberDragTargets()
+    @State private var memberMoveInProgress = false
+    @State private var memberMoveError: String?
     @State private var changingChannelGroup = false
     @State private var channelGroupError: String?
     @State private var ownChannelGroupChange: ChannelGroupChange?
@@ -165,11 +168,45 @@ struct ConnectedServerView: View {
 
     var body: some View {
         #if os(macOS)
-        channelActionDialogs(connectionDialogs(memberGroupDialogs))
+        memberMoveFeedback(channelActionDialogs(connectionDialogs(memberGroupDialogs)))
         #else
         channelActionDialogs(connectionDialogs(observedConnection))
         #endif
     }
+
+    #if os(macOS)
+    private func memberMoveFeedback(_ content: some View) -> some View {
+        content.alert("Couldn’t Move Member", isPresented: Binding {
+            tabSelected && memberMoveError != nil
+        } set: { visible in
+            if !visible { memberMoveError = nil }
+        }) {
+            Button("OK") { memberMoveError = nil }
+        } message: {
+            if let memberMoveError {
+                Text(NSLocalizedString(memberMoveError, comment: "Member move error"))
+            }
+        }
+    }
+
+    private func requestMemberMove(_ member: MemberSelection, source: UInt64, destination: UInt64) {
+        guard tabSelected, tabs?.selected.model === model || tabs == nil, !model.reconnecting,
+              !memberMoveInProgress,
+              let current = findMember(member), !current.member.isSelf, current.room.id == source,
+              destination != source, model.room(destination) != nil else { return }
+        memberMoveInProgress = true
+        memberMoveError = nil
+        Task {
+            let error = await model.changeChannel(.moveMember(clientId: member.clientID, databaseId: member.databaseID,
+                                                              source: source, destination: destination),
+                                                  generation: member.generation)
+            memberMoveInProgress = false
+            guard model.generation == member.generation,
+                  tabs?.selected.model === model || tabs == nil else { return }
+            memberMoveError = error
+        }
+    }
+    #endif
 
     private func channelActionDialogs(_ content: some View) -> some View {
         content
@@ -467,7 +504,16 @@ struct ConnectedServerView: View {
 
     private var channelRows: some View {
         ChannelRows(nodes: model.channels, current: model.currentChannel, expanded: channelExpansion,
-                    audio: model.audio, generation: model.generation, selection: $selection)
+                    audio: model.audio, generation: model.generation, selection: $selection, memberDragScope: memberDragScope)
+    }
+
+    private var memberDragScope: MemberDragScope? {
+        #if os(macOS)
+        guard tabSelected, !model.reconnecting, !memberMoveInProgress else { return nil }
+        return MemberDragScope(targets: memberDragTargets, move: requestMemberMove)
+        #else
+        nil
+        #endif
     }
 
     #if os(macOS)

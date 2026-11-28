@@ -139,6 +139,7 @@ struct ChannelRows: View {
     let audio: VoiceAudio
     let generation: UInt64
     @Binding var selection: SidebarSelection?
+    let memberDragScope: MemberDragScope?
 
     var body: some View {
         ForEach(nodes) { node in
@@ -148,11 +149,12 @@ struct ChannelRows: View {
                 })) {
                     if !node.room.memberDetails.isEmpty {
                         MemberPlaybackList(members: node.room.memberDetails, audio: audio,
-                                           generation: generation, selection: $selection)
+                                           generation: generation, selection: $selection,
+                                           channel: node.id, memberDragScope: memberDragScope)
                     }
                     if let children = node.children {
                         ChannelRows(nodes: children, current: current, expanded: $expanded, audio: audio,
-                                    generation: generation, selection: $selection)
+                                    generation: generation, selection: $selection, memberDragScope: memberDragScope)
                     }
                 } label: { link(node) }
                 .id(node.id)
@@ -193,6 +195,8 @@ struct ChannelRows: View {
                         .help("Member count unavailable")
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(MemberChannelDrop(scope: memberDragScope, channel: node.id))
         }
     }
 }

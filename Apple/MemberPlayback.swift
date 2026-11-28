@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 enum SidebarSelection: Hashable {
     case channel(UInt64)
@@ -30,17 +33,177 @@ struct MemberSelection: Hashable, Identifiable {
     }
 }
 
+struct MemberDragScope {
+    #if os(macOS)
+    let targets: MemberDragTargets
+    let move: @MainActor (MemberSelection, UInt64, UInt64) -> Void
+    #endif
+}
+
+#if os(macOS)
+@MainActor
+final class MemberDragTargets {
+    fileprivate let rows = NSHashTable<MemberDropSurface.Surface>.weakObjects()
+
+    fileprivate func destination(at point: NSPoint, in window: NSWindow, excluding source: UInt64) -> MemberDropSurface.Surface? {
+        rows.allObjects.first { row in
+            row.channel != source && row.window === window && !row.isHiddenOrHasHiddenAncestor
+                && row.visibleRect.contains(row.convert(point, from: nil))
+        }
+    }
+}
+
+private struct MemberDragSurface: NSViewRepresentable {
+    let member: MemberSelection
+    let channel: UInt64
+    let scope: MemberDragScope
+    let select: () -> Void
+
+    func makeNSView(context: Context) -> Surface { Surface() }
+
+    func updateNSView(_ view: Surface, context: Context) {
+        view.interaction = self
+    }
+
+    final class Surface: NSView {
+        private struct Press {
+            let point: NSPoint
+            let interaction: MemberDragSurface
+            var didDrag = false
+        }
+
+        var interaction: MemberDragSurface?
+        private var press: Press?
+        private weak var highlighted: MemberDropSurface.Surface?
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            if let interaction {
+                press = Press(point: event.locationInWindow, interaction: interaction)
+            }
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let window, var press, isDrag(event, press: press) else { return }
+            press.didDrag = true
+            self.press = press
+            let target = destination(for: event, press: press, in: window)
+            if highlighted !== target {
+                highlighted?.highlight(false)
+                target?.highlight(true)
+                highlighted = target
+            }
+            NSCursor.closedHand.set()
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            guard let press else { return }
+            clearPress()
+            guard let window, window.isKeyWindow else { return }
+            if isDrag(event, press: press) {
+                // The release point is authoritative even if AppKit coalesced drag events.
+                guard let target = destination(for: event, press: press, in: window) else { return }
+                let interaction = press.interaction
+                interaction.scope.move(interaction.member, interaction.channel, target.channel)
+            } else if bounds.contains(convert(event.locationInWindow, from: nil)) {
+                press.interaction.select()
+            }
+        }
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            if newWindow !== window, press != nil { clearPress() }
+            super.viewWillMove(toWindow: newWindow)
+        }
+
+        private func clearPress() {
+            press = nil
+            if let highlighted { highlighted.highlight(false) }
+            highlighted = nil
+            NSCursor.arrow.set()
+        }
+
+        private func isDrag(_ event: NSEvent, press: Press) -> Bool {
+            let point = event.locationInWindow
+            return press.didDrag || hypot(point.x - press.point.x, point.y - press.point.y) >= 4
+        }
+
+        private func destination(for event: NSEvent, press: Press, in window: NSWindow) -> MemberDropSurface.Surface? {
+            let interaction = press.interaction
+            return interaction.scope.targets.destination(at: event.locationInWindow, in: window, excluding: interaction.channel)
+        }
+    }
+}
+
+private struct MemberDropSurface: NSViewRepresentable {
+    let channel: UInt64
+    let targets: MemberDragTargets
+
+    func makeNSView(context: Context) -> Surface {
+        let view = Surface()
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 5
+        return view
+    }
+
+    func updateNSView(_ view: Surface, context: Context) {
+        view.channel = channel
+        if view.targets !== targets {
+            view.targets?.rows.remove(view)
+            view.targets = targets
+            targets.rows.add(view)
+        }
+    }
+
+    final class Surface: NSView {
+        var channel: UInt64 = 0
+        weak var targets: MemberDragTargets?
+
+        // Leave ordinary clicks and context menus with the channel row.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        func highlight(_ active: Bool) {
+            layer?.backgroundColor = active ? NSColor.controlAccentColor.withAlphaComponent(0.2).cgColor : nil
+        }
+    }
+}
+#endif
+
+struct MemberChannelDrop: ViewModifier {
+    let scope: MemberDragScope?
+    let channel: UInt64
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        if let scope {
+            content.overlay {
+                MemberDropSurface(channel: channel, targets: scope.targets)
+                    .accessibilityHidden(true)
+            }
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
 struct MemberPlaybackList: View {
     let members: [RoomMember]
     @ObservedObject var audio: VoiceAudio
     let generation: UInt64
     @Binding var selection: SidebarSelection?
+    let channel: UInt64
+    let memberDragScope: MemberDragScope?
 
     var body: some View {
         ForEach(members.filter(\.isSelf) + members.filter { !$0.isSelf }, id: \.clientId) { member in
-            let target = SidebarSelection.member(MemberSelection(member, generation: generation))
-            MemberRow(member: member, audio: audio) { selection = target }
-                .tag(target)
+            let target = MemberSelection(member, generation: generation)
+            MemberRow(member: member, audio: audio, selection: target, channel: channel, dragScope: memberDragScope) {
+                selection = .member(target)
+            }
+            .tag(SidebarSelection.member(target))
         }
     }
 }
@@ -48,6 +211,9 @@ struct MemberPlaybackList: View {
 private struct MemberRow: View {
     let member: RoomMember
     @ObservedObject var audio: VoiceAudio
+    let selection: MemberSelection
+    let channel: UInt64
+    let dragScope: MemberDragScope?
     let select: () -> Void
 
     private let iconWidth: CGFloat = 16
@@ -98,18 +264,26 @@ private struct MemberRow: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-            HStack(spacing: 6) {
-                Button(action: select) {
+        HStack(spacing: 6) {
+            Button(action: select) {
+                TimelineView(.periodic(from: .now, by: 0.25)) { _ in
                     nameAndStatus.frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                MemberConnectionQuality(member: member, voice: voice)
             }
-            .frame(minHeight: 24)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            #if os(macOS)
+            .overlay {
+                if let dragScope, selection.databaseID != 0, !member.isSelf {
+                    MemberDragSurface(member: selection, channel: channel, scope: dragScope, select: select)
+                        .accessibilityHidden(true)
+                }
+            }
+            #endif
+            MemberConnectionQuality(member: member, voice: voice)
         }
+        .frame(minHeight: 24)
+        .contentShape(Rectangle())
     }
 }
 

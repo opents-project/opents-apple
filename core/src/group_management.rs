@@ -124,20 +124,24 @@ enum Action {
     },
 }
 
-struct MemberTarget {
+pub(crate) struct MemberTarget {
     client_id: ClientId,
     database_id: ClientDbId,
 }
 
 impl MemberTarget {
-    fn new(client_id: u16, database_id: u64) -> Self {
+    pub(crate) fn new(client_id: u16, database_id: u64) -> Self {
         Self {
             client_id: ClientId(client_id),
             database_id: ClientDbId(database_id),
         }
     }
 
-    fn validate_online(&self, con: &Connection, channel: ChannelId) -> Result<(), String> {
+    pub(crate) fn validate_online(
+        &self,
+        con: &Connection,
+        channel: ChannelId,
+    ) -> Result<(), String> {
         let book = con.get_state().map_err(|error| error.to_string())?;
         let client = book
             .clients

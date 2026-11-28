@@ -5623,6 +5623,46 @@
           }
         }
       }
+    },
+    "Couldn’t Move Member": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法移动成员"
+          }
+        }
+      }
+    },
+    "Member is no longer available": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该成员已离线或不可用"
+          }
+        }
+      }
+    },
+    "Member changed channels": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该成员已切换频道"
+          }
+        }
+      }
+    },
+    "The member is already in this channel.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该成员已在此频道。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -1,7 +1,8 @@
+use crate::group_management::MemberTarget;
 use tokio::sync::oneshot;
 use tsclientlib::data::ChannelOptions;
 use tsclientlib::prelude::*;
-use tsclientlib::{ChannelId, ChannelType, Codec, Connection, MessageHandle};
+use tsclientlib::{ChannelId, ChannelType, ClientId, Codec, Connection, MessageHandle};
 
 #[derive(uniffi::Enum)]
 pub enum ChannelLifetime {
@@ -64,6 +65,12 @@ pub enum ChannelChange {
     },
     Delete {
         channel: u64,
+    },
+    MoveMember {
+        client_id: u16,
+        database_id: u64,
+        source: u64,
+        destination: u64,
     },
 }
 
@@ -206,6 +213,28 @@ impl ChannelChange {
                 ts_bookkeeping::messages::c2s::OutChannelDeletePart {
                     channel_id: channel,
                     force: false,
+                }
+                .to_packet()
+            }
+            Self::MoveMember {
+                client_id,
+                database_id,
+                source,
+                destination,
+            } => {
+                let destination = ChannelId(destination);
+                if !book.channels.contains_key(&destination) {
+                    return Err("Channel is unavailable.".into());
+                }
+                MemberTarget::new(client_id, database_id)
+                    .validate_online(con, ChannelId(source))?;
+                if ChannelId(source) == destination {
+                    return Err("The member is already in this channel.".into());
+                }
+                ts_bookkeeping::messages::c2s::OutClientMovePart {
+                    client_id: ClientId(client_id),
+                    channel_id: destination,
+                    channel_password: None,
                 }
                 .to_packet()
             }
